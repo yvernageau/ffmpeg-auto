@@ -5,50 +5,48 @@ import {Duration, Moment} from 'moment'
 import 'moment-duration-format'
 import * as path from "path"
 import {LoggerFactory} from './logger'
-import {InputMedia, OutputMedia} from './media'
+import {InputMedia, InputStream, OutputMedia} from './media'
 import {MediaBuilder} from './media.builder'
 import {Profile} from './profile'
 import {DefaultSnippetResolver} from './snippet'
 
 const logger = LoggerFactory.get('ffmpeg')
 
-function padStart(obj: number | string, targetLenght: number, padString: string = '\u0020'): string {
-    const s = obj.toString()
-    return padString.repeat(targetLenght - s.length) + s
-}
-
 export class Executor {
 
-    private readonly profile: Profile
-    private readonly input: InputMedia
-    private readonly outputs: OutputMedia[]
+    readonly profile: Profile
+    readonly input: InputMedia
+    readonly outputs: OutputMedia[]
 
-    private lock: boolean
+    private locked: boolean
 
-    private startTime: Moment
-    private endTime: Moment
-
-    private framerate: number
-    private duration: Duration
-
-    private progress: number = -1
-    private progressPad: number = 1
+    private listeners: ExecutorListener[] = []
 
     constructor(profile: Profile, input: InputMedia) {
         this.profile = profile
         this.input = input
         this.outputs = new MediaBuilder().build({profile: profile, input: input})
+
+        this.listeners.push(
+            new LoggingExecutorListener(this),
+            new ProgressExecutorListener(this),
+            new PostExecutorListener(this)
+        )
     }
 
     async execute() {
-        if (this.lock) {
+        if (this.locked) {
             return Promise.reject('This execution has already been done')
         }
-        this.lock = true
+        this.locked = true
 
         return new Promise((resolve, reject) => {
             // Configure input
-            let command = ffmpeg().input(this.input.resolvePath())
+            let command = ffmpeg()
+
+            let inputPath = this.input.resolvePath()
+            command.input(inputPath)
+            logger.verbose('input = %s', inputPath)
 
             if (this.profile.input && this.profile.input.params) {
                 command.inputOption(new DefaultSnippetResolver().resolve(this.profile.input.params, {
@@ -60,160 +58,268 @@ export class Executor {
             // Configure output(s)
             this.outputs.forEach(o => {
                 const globalOptions: string[] = o.params
-                    .map(a => a.trim().split(' '))
+                    .map(a => a.trim().split(/\s+/))
                     .reduce((a, b) => a.concat(...b), [])
 
                 const streamOptions: string[] = o.streams
                     .map(os => os.params)
                     .reduce((a, b) => a.concat(...b), [])
-                    .map(a => (<string>a).trim().split(' '))
+                    .map(a => (<string>a).trim().split(/\s+/))
                     .reduce((a, b) => a.concat(...b), [])
+
+                const options = [...streamOptions, ...globalOptions]
 
                 const outputPath = o.resolvePath()
                 fs.mkdirpSync(path.parse(outputPath).dir)
 
-                command.output(outputPath).outputOptions(...streamOptions, ...globalOptions)
+                command.output(outputPath).outputOptions(...options)
             })
 
             // Configure events
             command
-                .on('start', cl => this.onStart(cl))
-                .on('progress', (progress) => this.onProgress(progress))
+                .on('start', cl => {
+                    this.listeners.forEach(l => l.onStart(cl))
+                })
+                .on('progress', progress => {
+                    this.listeners.forEach(l => l.onProgress(progress))
+                })
                 .on('stderr', line => {
-                    if (line.search(/frame=\s*\d+/) < 0) { // Skip progress
-                        this.onLine(line)
+                    if (line.search(/^frame=\s*\d+/) < 0 && line.search(/Press /) < 0) { // Skip progress and prompt
+                        this.listeners.forEach(l => l.onLine(line))
                     }
                 })
-                .on('end', (stdout, stderr) => {
-                    this.onEnd(stderr)
+                .on('end', () => {
+                    this.listeners.forEach(l => l.onEnd())
                     resolve()
                 })
-                .on('error', (err, stdout, stderr) => {
+                .on('error', err => {
                     command.kill('SIGINT')
-                    this.onFailed(stderr)
-                    reject(err.message)
+                    this.listeners.forEach(l => l.onFailed())
+                    reject(err.message) // TODO Remove tailing return-line
                 })
 
             command.run()
         })
     }
+}
+
+export abstract class ExecutorListener {
+
+    protected executor: Executor
+
+    protected constructor(executor: Executor) {
+        this.executor = executor
+    }
+
+    onStart(commandLine: string) {
+        // Do nothing
+    }
+
+    onLine(line: string) {
+        // Do nothing
+    }
+
+    onProgress(progress: any) {
+        // Do nothing
+    }
+
+    onEnd() {
+        // Do nothing
+    }
+
+    onFailed() {
+        // Do nothing
+    }
+}
+
+export class LoggingExecutorListener extends ExecutorListener {
+
+    private readonly outputLines: string[] = []
+
+    constructor(executor: Executor) {
+        super(executor)
+    }
+
+    onStart(commandLine: string) {
+        logger.info('Executing: %s', commandLine)
+
+        this.outputLines.push(commandLine)
+        this.outputLines.push('')
+    }
+
+    onLine(line: string) {
+        logger.debug(line)
+
+        if (this.executor.profile.output.writeLog) {
+            this.outputLines.push(line)
+        }
+    }
+
+    onEnd() {
+        logger.info('Transcoding succeeded')
+
+        if (this.executor.profile.output.writeLog) {
+            const output = this.outputLines.join('\n')
+
+            this.writeLogFile(output)
+                .then(logFile => {
+                    logger.info('Log written at %s', logFile)
+                })
+                .catch(reason => {
+                    logger.error('Failed to write the log file: %s', reason)
+                    logger.info('\n%s', output)
+                })
+        }
+    }
+
+    onFailed() {
+        logger.error('Transcoding failed')
+
+        const output = this.outputLines.join('\n')
+
+        this.writeLogFile(output)
+            .then(logFile => {
+                logger.error('For more details, see log at %s', logFile)
+            })
+            .catch(reason => {
+                logger.error('Failed to write the log file: %s', reason)
+                logger.error('\n%s', output)
+            })
+    }
+
+    private async writeLogFile(content: string): Promise<string> {
+        return new Promise<string>((resolve, reject) => {
+            const datetime = moment().format('YYYYMMDD-HHmmssSSS')
+            const logFile = path.resolve(this.executor.profile.output.directory, `${this.executor.input.path.filename}.${datetime}.log`)
+
+            fs.writeFile(logFile, content, e => {
+                if (e) return reject(e)
+            })
+
+            return resolve(logFile)
+        })
+    }
+}
+
+function padStart(obj: number | string, targetLenght: number, padString: string = '\u0020'): string {
+    const s = obj.toString()
+    return padString.repeat(targetLenght - s.length) + s
+}
+
+export class ProgressExecutorListener extends ExecutorListener {
+
+    startTime: Moment
+    endTime: Moment
+
+    inputFramerate: number
+    inputDuration: Duration
+
+    progress: number = -1
+    progressStep: number = 5
+
+    constructor(executor: Executor) {
+        super(executor)
+    }
+
+    private static formatDuration(duration: Duration) {
+        let asSeconds = duration.asSeconds()
+
+        return isFinite(asSeconds) && asSeconds >= 0
+            ? duration.format('d[d] *HH:mm:ss', {forceLength: true})
+            : '--:--:--'
+    }
+
+    private static formatSpeed(speed: number) {
+        return speed.toFixed(3)
+    }
 
     onStart(commandLine: string) {
         this.startTime = moment()
 
-        try {
-            const avgFramerate: string = this.input.streams.filter(s => s.avg_frame_rate !== '0/0')[0].avg_frame_rate
-            const avgFramerateFrac: number[] = avgFramerate.split('/').map(f => parseInt(f))
-            this.framerate = avgFramerateFrac[0] / avgFramerateFrac[1]
+        let videoStreams: InputStream[] = this.executor.input.streams.filter(s => s.avg_frame_rate !== '0/0')
+        if (videoStreams && videoStreams.length > 0) {
+            let avgFramerate: string = videoStreams[0].avg_frame_rate
+            let avgFramerateFrac: number[] = avgFramerate.split('/').map(f => parseInt(f))
+            this.inputFramerate = avgFramerateFrac[0] / avgFramerateFrac[1]
         }
-        catch (e) {
-            logger.debug('Unable to calculate the framerate')
-            this.framerate = 1 // to avoid division by 0
-        }
-
-        try {
-            this.duration = moment.duration(this.input.format.duration, 'seconds')
-        }
-        catch (e) {
-            logger.debug('Unable to calculate the duration')
-            this.duration = moment.duration(0, 'seconds')
+        else {
+            logger.debug('Unable to calculate the framerate, using default')
+            this.inputFramerate = 1 // to avoid division by 0
         }
 
-        logger.info('Executing: %s', commandLine)
-    }
-
-    // noinspection JSMethodCanBeStatic
-    onLine(line: string) {
-        logger.debug(line)
+        if (this.executor.input.format && this.executor.input.format.duration) {
+            this.inputDuration = moment.duration(this.executor.input.format.duration, 'seconds')
+        }
+        else {
+            logger.debug('Unable to calculate the duration, using default')
+            this.inputDuration = moment.duration(0, 'seconds')
+        }
     }
 
     onProgress(progress: any) {
         let percent = Math.floor(progress.percent)
-        if (percent > this.progress && percent % this.progressPad === 0) {
+        if (percent > this.progress && percent % this.progressStep === 0) {
 
-            const speed = progress.currentFps / this.framerate
+            const speed = progress.currentFps / this.inputFramerate
 
             const elapsed = moment.duration(moment().diff(this.startTime), 'milliseconds')
-            const elapsedStr = elapsed.format('HH:mm:ss', {trim: false, forceLength: true})
-
-            const eta = moment.duration((100 - progress.percent) / 100 * this.duration.asSeconds() * (1 / speed), 'seconds')
-            const etaStr = isFinite(eta.asSeconds())
-                ? eta.format('HH:mm:ss', {trim: false, forceLength: true})
-                : '--:--:--'
+            const eta = moment.duration((100 - progress.percent) / 100 * this.inputDuration.asSeconds() * (1 / speed), 'seconds')
 
             logger.info(
-                '%s%% : %sfps [%s @ %s] ; Elapsed: %s ; ETA: %s ; x%s',
+                '%s%% [%s @ %s] FPS: %s ; Elapsed: %s ; ETA: %s ; Speed: x%s',
                 padStart(percent, 3),
-                padStart(progress.currentFps, 4),
                 padStart(progress.frames, 6),
                 progress.timemark,
-                elapsedStr,
-                etaStr,
-                speed.toFixed(3)
+                padStart(progress.currentFps, 4),
+                ProgressExecutorListener.formatDuration(elapsed),
+                ProgressExecutorListener.formatDuration(eta),
+                ProgressExecutorListener.formatSpeed(speed)
             )
 
             this.progress = percent
         }
     }
 
-    onEnd(stderr: string) {
+    onEnd() {
         this.endTime = moment()
+        logger.info('Tooks %s', moment.duration(this.endTime.diff(this.startTime)).format('d[d] HH:mm:ss.SSS'))
+    }
+}
 
-        if (this.profile.output.writeLog) {
-            this.writeLog(stderr).catch((reason) => {
-                logger.error('Failed to write log file: %s', reason)
-                logger.info(stderr)
-            })
-        }
+class PostExecutorListener extends ExecutorListener {
 
-        const inputFile = path.relative(this.profile.input.directory, this.input.resolvePath())
-        const lockFile = path.resolve(this.profile.output.directory, '.lock')
-        fs.appendFile(lockFile, inputFile).catch(reason => logger.warn('Cannot write filename in %s : %s', lockFile, reason))
-
-        logger.info('Transcoding succeeded. Tooks %ds', moment.duration(this.endTime.diff(this.startTime)).format('d[d] HH:mm:ss.SSS'))
+    constructor(executor: Executor) {
+        super(executor)
     }
 
-    onFailed(stderr: string) {
-        logger.error('')
-        this.writeLog(stderr)
-            .then(logFile => {
-                logger.error('Transcoding failed! For more details, see log at %s', logFile)
-            })
-            .catch(() => {
-                logger.error(stderr)
-                logger.error('Transcoding failed!')
-            })
+    onEnd() {
+        const inputFile = path.relative(this.executor.profile.input.directory, this.executor.input.resolvePath())
+        const lockFile = path.resolve(this.executor.profile.output.directory, 'excludes.list')
+        fs.appendFile(lockFile, inputFile + '\n').catch(reason => {
+            // TODO Save the filename and retry later
+            logger.warn("Failed to write in the excludes list: %s", reason)
+            logger.warn("Requires to be append manually: '%s'", inputFile)
+        })
+    }
 
+    onFailed() {
         // noinspection JSIgnoredPromiseFromCall
         this.cleanOutputs()
+            .catch(reason => logger.warn(reason))
     }
 
     private async cleanOutputs() {
-        this.outputs
+        this.executor.outputs
             .map(o => o.resolvePath())
             .forEach(f => {
                 fs.stat(f, e => {
-                    if (e) return
+                    if (e) {
+                    }
                     fs.unlink(f, (e2) => {
-                        if (e2) return
+                        if (e2) {
+                        }
                     })
                 })
             })
-    }
-
-    private async writeLog(content: string): Promise<string> {
-        return new Promise<string>((resolve, reject) => {
-            let datetime = new Date().toLocaleString().replace(/[ :-]/g, '')
-            let logFile = path.resolve(this.profile.output.directory, `${this.input.path.filename}.${datetime}.log`)
-
-            let lines = content.split(/\r\n|\r|\n/).filter(s => s.trim()).join('\r\n')
-
-            fs.writeFile(logFile, lines, e => {
-                // FIXME 'strerr' is not completely written in log file
-                if (e) return reject(e)
-            })
-
-            return resolve(logFile)
-        })
     }
 }
