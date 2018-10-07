@@ -44,15 +44,22 @@ export class Executor {
             // Configure input
             let command = ffmpeg()
 
-            let inputPath = this.input.resolvePath()
-            command.input(inputPath)
-            logger.verbose('input = %s', inputPath)
-
+            let inputOptions: string[] = []
             if (this.profile.input && this.profile.input.params) {
-                command.inputOption(new DefaultSnippetResolver().resolve(this.profile.input.params, {
+                inputOptions = new DefaultSnippetResolver().resolve(this.profile.input.params, {
                     profile: this.profile,
                     input: this.input
-                }))
+                }).split(/\s+/)
+            }
+
+            const inputPath = this.input.resolvePath()
+
+            logger.debug('input = %s', inputPath)
+            logger.debug('input.options = %s', inputOptions.join(' '))
+
+            command.input(inputPath)
+            if (inputOptions && inputOptions.length > 0) {
+                command.inputOption(...inputOptions)
             }
 
             // Configure output(s)
@@ -67,12 +74,18 @@ export class Executor {
                     .map(a => (<string>a).trim().split(/\s+/))
                     .reduce((a, b) => a.concat(...b), [])
 
-                const options = [...streamOptions, ...globalOptions]
+                const outputOptions = [...streamOptions, ...globalOptions]
 
                 const outputPath = o.resolvePath()
                 fs.mkdirpSync(path.parse(outputPath).dir)
 
-                command.output(outputPath).outputOptions(...options)
+                logger.debug('output:%d = %s', o.id, outputPath)
+                logger.debug('output:%d.options = %s', o.id, outputOptions.join(' '))
+
+                command.output(outputPath)
+                if (outputOptions && outputOptions.length > 0) {
+                    command.outputOptions(...outputOptions)
+                }
             })
 
             // Configure events
