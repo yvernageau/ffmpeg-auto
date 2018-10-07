@@ -54,12 +54,15 @@ const args = yargs
 const profile: Profile = Profile.load(args.profile)
 profile.input.directory = args.input
 profile.output.directory = args.output
+
 LoggerFactory.debug = args.debug
 
-configLogger.info('profile = %s', profile.name)
+configLogger.info('profile = %s', args.profile)
 configLogger.info('input   = %s', args.input)
 configLogger.info('output  = %s', args.output)
 configLogger.info('watch   = %s', args.watch)
+
+// TODO Validate profile
 
 let queueCount = 0
 const queue: BetterQueue = new BetterQueue(
@@ -145,10 +148,10 @@ async function getMedia(file: string): Promise<InputMedia> {
 function isExcludedFromProfile(file: string): boolean {
     // TODO Move to configuration validator
     if (!profile.input) {
-        throw new Error(`Missing 'input' in '${profile.name}', all files are excluded by default`)
+        throw new Error(`Missing 'input' in '${profile.id}', all files are excluded by default`)
     }
     else if (!profile.input.includes && !profile.input.excludes) {
-        throw new Error(`Missing 'includes' or 'excludes' in '${profile.name}#input', all files are excluded by default`)
+        throw new Error(`Missing 'includes' or 'excludes' in '${profile.id}#input', all files are excluded by default`)
     }
 
     const extension = path.parse(file).ext.replace(/^\./, '')

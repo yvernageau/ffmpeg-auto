@@ -4,7 +4,7 @@ import {Snippet, Snippets} from './snippet'
 export class Profile {
     [key: string]: any
 
-    name: string
+    id: string
 
     input: InputConfig
     output: OutputConfig
