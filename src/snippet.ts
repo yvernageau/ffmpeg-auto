@@ -21,7 +21,7 @@ export class SnippetContext {
 
 type SnippetFunction<T> = (context: SnippetContext) => T
 
-function newFunction<T>(body: string): SnippetFunction<T> {
+function parseFunction<T>(body: string): SnippetFunction<T> {
     return (context: SnippetContext) => {
         // Add the 'return' declaration if missing (in case of simple function)
         if (body.search(/return/) < 0) {
@@ -50,11 +50,11 @@ function newFunction<T>(body: string): SnippetFunction<T> {
 
 export type SnippetPredicate = SnippetFunction<boolean>
 
-export function newPredicate(exec: Snippets): SnippetPredicate {
+export function parsePredicate(exec: Snippets): SnippetPredicate {
     let result: SnippetPredicate = () => true
 
     if (exec) {
-        let parse = (f: string) => newFunction<boolean>(f)
+        let parse = (f: string) => parseFunction<boolean>(f)
         let and = (a: SnippetPredicate, b: SnippetPredicate) => (c: SnippetContext) => a(c) && b(c)
 
         result = Array.isArray(exec)
@@ -116,7 +116,7 @@ export class DefaultSnippetResolver implements SnippetResolver {
     }
 
     private resolveFunction(snippet: string, context: SnippetContext): string {
-        return snippet.replace(REGEX_EXECUTABLE, (match, body: string) => newFunction<string>(body.trim())(context))
+        return snippet.replace(REGEX_EXECUTABLE, (match, body: string) => parseFunction<string>(body.trim())(context))
     }
 }
 

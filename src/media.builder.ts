@@ -2,7 +2,7 @@ import * as path from 'path'
 import {LoggerFactory} from './logger'
 import {Chapter, OutputMedia} from './media'
 import {Mapping, Option} from './profile'
-import {DefaultSnippetResolver, newPredicate, SnippetContext, SnippetResolver} from './snippet'
+import {DefaultSnippetResolver, parsePredicate, SnippetContext, SnippetResolver} from './snippet'
 
 const logger = LoggerFactory.get('builder')
 
@@ -80,7 +80,7 @@ class DefaultMappingBuilder extends MappingBuilder {
     }
 
     build(context: SnippetContext, outputsCount: number): OutputMedia[] {
-        if (this.mapping.when && !newPredicate(this.mapping.when)(context)) {
+        if (this.mapping.when && !parsePredicate(this.mapping.when)(context)) {
             logger.log("[%s] 'when' directive does not match the current context", this.mapping.id)
             return []
         }
@@ -101,7 +101,7 @@ class DefaultMappingBuilder extends MappingBuilder {
             output.params.push(...this.mapping.options
                 .filter(o => !o.skip)
                 .filter(o => !o.on || o.on === 'none')
-                .filter(o => newPredicate(o.when)(localContext))
+                .filter(o => parsePredicate(o.when)(localContext))
                 .map(o => Array.isArray(o.params) ? o.params : [o.params])
                 .reduce((a, b) => a.concat(...b), []))
 
@@ -117,7 +117,7 @@ class DefaultMappingBuilder extends MappingBuilder {
 
             let localOptions: Option[] = options
                 .filter(o => o.on === s.codec_type || o.on === 'all')
-                .filter(o => newPredicate(o.when)({...localContext, stream: s}))
+                .filter(o => parsePredicate(o.when)({...localContext, stream: s}))
 
             if (localOptions && localOptions.length > 0) {
                 localOptions.forEach(o => {
@@ -219,7 +219,7 @@ class ManyMappingBuilder extends MappingBuilder {
 
         return context.input.streams
             .filter(s => this.mapping.on === s.codec_type || this.mapping.on === 'all')
-            .filter(s => newPredicate(this.mapping.when)({...context, stream: s}))
+            .filter(s => parsePredicate(this.mapping.when)({...context, stream: s}))
             .map(s => {
                 const output = new OutputMedia(outputsCount++, context.input)
 
