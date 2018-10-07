@@ -8,7 +8,7 @@ export type Snippet = string
 export type Snippets = Snippet | Snippet[]
 
 const REGEX: RegExp = /{((?:(?![{}]).)*)}/gi
-const REGEX_EXECUTABLE: RegExp = /{=((?:(?!{=|;}).)*);}/gi // TODO Remove tailing ';'
+const REGEX_EXECUTABLE: RegExp = /{{((?:(?!{{|}}).)*)}}/gi
 
 export class SnippetContext {
     profile: Profile
@@ -128,34 +128,34 @@ type SnippetShortcut = {
 const shortcuts: SnippetShortcut[] = [
     {
         snippet: 'iid', // Input stream identifier
-        replacement: '{= input.id ;}:{= stream.index ;}'
+        replacement: '{{ input.id}}:{{stream.index}}'
     },
     {
         snippet: 'oid', // Output stream identifier
-        replacement: '{= outputStream.index ;}'
+        replacement: '{{ outputStream.index}}'
     },
     {
         snippet: 'fn', // Input filename without extension
-        replacement: '{= input.path.filename ;}'
+        replacement: '{{ input.path.filename}}'
     },
     {
         snippet: 'lng', // Input stream language | 'und'
         replacement:
-            "{= " +
+            "{{" +
             "stream.tags && stream.tags.language " +
             "? stream.tags.language " +
             ": 'und' " +
-            ";}"
+            "}}"
     },
     {
         snippet: 'label', // 'forced' | 'sdh'
         replacement:
-            "{= " +
+            "{{" +
             "(stream.disposition && stream.disposition.forced === 1) || (stream.tags && stream.tags.title && stream.tags.title.search(/forced/i) >= 0) " +
             "? 'forced' " +
             ": (stream.disposition && stream.disposition.hearing_impaired === 1) || (stream.tags && stream.tags.title && stream.tags.title.search(/hi|sdh/i) >= 0) " +
             "? 'sdh' " +
             ": '' " +
-            ";}"
+            "}}"
     },
 ]
