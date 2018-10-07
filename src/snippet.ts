@@ -69,27 +69,7 @@ export interface SnippetResolver {
     resolve(snippet: Snippets, context: SnippetContext): string
 }
 
-class SnippetShortcut {
-    snippet: string | RegExp
-    replacement: string | Snippet
-}
-
-const shortcuts: SnippetShortcut[] = [
-    {snippet: 'iid', replacement: '{= input.id ;}:{= stream.index ;}'},
-    {snippet: 'oid', replacement: '{= outputStream.index ;}'},
-    {snippet: 'fn', replacement: '{= input.path.filename ;}'},
-    {snippet: 'lng', replacement: "{= stream.tags && stream.tags.language ? stream.tags.language : 'und' ;}"},
-    {
-        snippet: 'label',
-        replacement: "{= (stream.disposition && stream.disposition.forced === 1) || (stream.tags && stream.tags.title && stream.tags.title.search(/forced/i) >= 0) ? 'forced' : (stream.disposition && stream.disposition.hearing_impaired === 1) || (stream.tags && stream.tags.title && stream.tags.title.search(/hi|sdh/i) >= 0) ? 'sdh' : '' ;}"
-    },
-]
-
 export class DefaultSnippetResolver implements SnippetResolver {
-
-    private static isFunction(value: string) {
-        return value ? value.search(REGEX_EXECUTABLE) >= 0 : false
-    }
 
     resolve(snippet: Snippets, context: SnippetContext): string {
         let result: string = (snippet ? Array.isArray(snippet) ? snippet : [snippet] : []).join(' ')
@@ -120,7 +100,7 @@ export class DefaultSnippetResolver implements SnippetResolver {
         if (result.search(regexp) >= 0) {
             let replacement = shortcut.replacement
 
-            if (DefaultSnippetResolver.isFunction(replacement)) {
+            if (replacement ? replacement.search(REGEX_EXECUTABLE) >= 0 : false) {
                 replacement = this.resolveFunction(replacement, context)
             }
 
@@ -139,3 +119,43 @@ export class DefaultSnippetResolver implements SnippetResolver {
         return snippet.replace(REGEX_EXECUTABLE, (match, body: string) => newFunction<string>(body.trim())(context))
     }
 }
+
+type SnippetShortcut = {
+    snippet: string | RegExp
+    replacement: string | Snippet
+}
+
+const shortcuts: SnippetShortcut[] = [
+    {
+        snippet: 'iid', // Input stream identifier
+        replacement: '{= input.id ;}:{= stream.index ;}'
+    },
+    {
+        snippet: 'oid', // Output stream identifier
+        replacement: '{= outputStream.index ;}'
+    },
+    {
+        snippet: 'fn', // Input filename without extension
+        replacement: '{= input.path.filename ;}'
+    },
+    {
+        snippet: 'lng', // Input stream language | 'und'
+        replacement:
+            "{= " +
+            "stream.tags && stream.tags.language " +
+            "? stream.tags.language " +
+            ": 'und' " +
+            ";}"
+    },
+    {
+        snippet: 'label', // 'forced' | 'sdh'
+        replacement:
+            "{= " +
+            "(stream.disposition && stream.disposition.forced === 1) || (stream.tags && stream.tags.title && stream.tags.title.search(/forced/i) >= 0) " +
+            "? 'forced' " +
+            ": (stream.disposition && stream.disposition.hearing_impaired === 1) || (stream.tags && stream.tags.title && stream.tags.title.search(/hi|sdh/i) >= 0) " +
+            "? 'sdh' " +
+            ": '' " +
+            ";}"
+    },
+]
