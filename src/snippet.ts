@@ -42,7 +42,7 @@ function parseFunction<T>(body: string): SnippetFunction<T> {
             throw new Error(`Failed to resolve { ${body} } : returns ${result}`)
         }
 
-        logger.debug('Resolved { %s } = %s', body, result)
+        logger.verbose('Resolved { %s } = %s', body, result)
 
         return result
     }
