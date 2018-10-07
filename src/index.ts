@@ -93,6 +93,7 @@ const queue = new Queue(
 const watcher: FSWatcher = new FSWatcher(
     {
         awaitWriteFinish: true,
+        alwaysStat: true,
         ignorePermissionErrors: true,
         persistent: args.watch
     })
