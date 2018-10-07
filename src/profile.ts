@@ -22,6 +22,9 @@ export class IOConfig {
 }
 
 export class InputConfig extends IOConfig {
+    includes?: RegExp
+    excludes?: RegExp
+
     params?: Snippets = []
 }
 
