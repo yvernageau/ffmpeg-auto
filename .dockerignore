@@ -1,0 +1,9 @@
+.idea
+*.iml
+
+lib
+node_modules
+npm-debug.log
+
+*.md
+LICENSE
