@@ -22,13 +22,13 @@ export class IOConfig {
 }
 
 export class InputConfig extends IOConfig {
-    params: Snippets = []
+    params?: Snippets = []
 }
 
 // TODO Support for filters (filter_complex)
 export class OutputConfig extends IOConfig {
-    defaultExtension: string
-    writeLog: boolean = false
+    defaultExtension?: string = 'mkv'
+    writeLog?: boolean = false
 
     mappings: Mapping[] = []
 }
@@ -36,18 +36,18 @@ export class OutputConfig extends IOConfig {
 export class Task {
     id?: string
 
-    on: StreamSelector = 'none'
-    when: Snippets = 'true'
-    skip: boolean = false
+    on?: StreamSelector = 'none'
+    when?: Snippets = 'true'
+    skip?: boolean = false
 
-    params: Snippets = []
+    params?: Snippets = []
 }
 
 export class Mapping extends Task {
     output: Snippet = '{fn}'
-    format: string
+    format?: string
 
-    options: Option[] = []
+    options?: Option[] = []
 }
 
 export class Option extends Task {
