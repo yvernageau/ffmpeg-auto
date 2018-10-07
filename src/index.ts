@@ -1,8 +1,7 @@
-import '@babel/polyfill'
-import * as BetterQueue from 'better-queue'
+import * as Queue from 'better-queue'
 import {FSWatcher} from 'chokidar'
 import {ffprobe} from 'fluent-ffmpeg'
-import * as fs from 'fs'
+import * as fs from 'fs-extra'
 import * as path from 'path'
 import * as yargs from 'yargs'
 import {Executor} from './executor'
@@ -65,14 +64,14 @@ configLogger.info('watch   = %s', args.watch)
 // TODO Validate profile
 
 let queueCount = 0
-const queue: BetterQueue = new BetterQueue(
+const queue = new Queue(
     {
         id: ((task, cb) => cb(null, `#${++queueCount}`)),
         process: (input: InputMedia, callback) => {
             new Executor(profile, input)
                 .execute()
                 .catch(reason => callback(reason))
-                .then(result => callback(null, result))
+                .then(() => callback(null))
         }
     })
     .on('task_queued', (id, input: InputMedia) => {

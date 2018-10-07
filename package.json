@@ -1,19 +1,14 @@
 {
   "name": "media-toolchain",
   "version": "0.0.1",
+  "author": "Yoann Vernageau",
+  "description": "",
   "license": "MIT",
+  "main": "index.js",
   "scripts": {
-    "start": "node lib/index.js",
-    "build": "babel src --out-dir lib --extensions '.ts'"
+    "build": "tsc"
   },
   "devDependencies": {
-    "@babel/cli": "^7.1.2",
-    "@babel/core": "^7.1.2",
-    "@babel/plugin-proposal-class-properties": "^7.1.0",
-    "@babel/plugin-proposal-object-rest-spread": "^7.0.0",
-    "@babel/preset-env": "^7.1.0",
-    "@babel/preset-typescript": "^7.1.0",
-    "@babel/runtime": "^7.1.2",
     "@types/better-queue": "^3.8.0",
     "@types/chokidar": "^1.7.5",
     "@types/fluent-ffmpeg": "^2.1.8",
@@ -24,7 +19,6 @@
     "typescript": "^3.1.1"
   },
   "dependencies": {
-    "@babel/polyfill": "^7.0.0",
     "better-queue": "^3.8.10",
     "chokidar": "^2.0.4",
     "fluent-ffmpeg": "^2.1.2",
@@ -33,5 +27,8 @@
     "moment-duration-format": "^2.2.2",
     "winston": "^3.1.0",
     "yargs": "^12.0.2"
+  },
+  "directories": {
+    "lib": "lib"
   }
 }
