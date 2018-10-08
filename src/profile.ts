@@ -1,4 +1,4 @@
-import * as fs from "fs-extra"
+import * as fs from 'fs-extra'
 import {Snippet, Snippets} from './snippet'
 
 export class Profile {

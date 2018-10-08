@@ -1,5 +1,5 @@
 import * as ffmpeg from 'fluent-ffmpeg'
-import * as fs from "fs-extra"
+import * as fs from 'fs-extra'
 import * as moment from 'moment'
 import {Duration, Moment} from 'moment'
 import 'moment-duration-format'
@@ -221,11 +221,11 @@ function padStart(obj: number | string, targetLenght: number, padString: string 
 
 export class ProgressExecutorListener extends ExecutorListener {
 
-    startTime: Moment
-    endTime: Moment
+    startTime?: Moment
+    endTime?: Moment
 
-    inputFramerate: number
-    inputDuration: Duration
+    inputFramerate?: number
+    inputDuration?: Duration
 
     progress: number = -1
     progressStep: number = 5
@@ -256,16 +256,16 @@ export class ProgressExecutorListener extends ExecutorListener {
             this.inputFramerate = avgFramerateFrac[0] / avgFramerateFrac[1]
         }
         else {
-            logger.debug('Unable to calculate the framerate, using default')
             this.inputFramerate = 1 // to avoid division by 0
+            logger.debug('Unable to calculate the framerate, using default (%s)', this.inputFramerate)
         }
 
         if (this.executor.input.format && this.executor.input.format.duration) {
             this.inputDuration = moment.duration(this.executor.input.format.duration, 'seconds')
         }
         else {
-            logger.debug('Unable to calculate the duration, using default')
             this.inputDuration = moment.duration(0, 'seconds')
+            logger.debug('Unable to calculate the duration, using default (%ss)', this.inputDuration.asSeconds())
         }
     }
 
