@@ -4,20 +4,29 @@ import * as fs from 'fs-extra'
 import * as path from 'path'
 import {LoggerFactory} from './logger'
 import {InputMedia} from './media'
-import {Profile} from './profile'
+import {InputConfig} from './profile'
 
 const logger = LoggerFactory.get('watcher')
 
 export class DirectoryWatcher {
 
-    private readonly profile: Profile
-    private readonly onInput: (input: InputMedia) => void
+    private readonly config: InputConfig
+    private readonly callback: (input: InputMedia) => void
 
     private readonly watcher: FSWatcher
+    private readonly filters: FileFilter[] = []
 
-    constructor(profile: Profile, onInput: (input: InputMedia) => void, watch: boolean = false) {
-        this.profile = profile
-        this.onInput = onInput
+    constructor(config: InputConfig, watch: boolean, callback: (input: InputMedia) => void) {
+        // TODO Move to configuration validator
+        if (!config) {
+            throw new Error(`Missing 'input' in profile, all files are excluded by default`)
+        }
+        else if (!config.include && !config.exclude) {
+            throw new Error(`Missing 'input.includes' or 'input.excludes' in profile, all files are excluded by default`)
+        }
+
+        this.config = config
+        this.callback = callback
 
         this.watcher = new FSWatcher(
             {
@@ -31,6 +40,11 @@ export class DirectoryWatcher {
             .on('unlinkDir', path => this.onRemoveDirectory(path))
 
         process.on('exit', () => this.watcher.close())
+
+        this.filters.push(
+            new ExcludeListFilter(config),
+            new ExtensionFilter(config)
+        )
     }
 
     watch(...paths: string[]) {
@@ -43,31 +57,28 @@ export class DirectoryWatcher {
 
     async createInput(file: string): Promise<InputMedia> {
         return new Promise<InputMedia>((resolve, reject) => {
-            if (this.isExcludedFromList(file)) {
-                return reject("File has already been processed (registered in 'excludes.list')")
+            const failedFilters = this.filters.filter(f => !f.test(file))
+            if (failedFilters && failedFilters.length > 0) {
+                return reject(failedFilters[0].reason()) // Only describe the first
             }
-            else if (this.isExcludedFromProfile(file)) {
-                return reject("File extension is excluded in profile")
-            }
-            else {
-                ffprobe(file, ['-show_chapters'], (err, data) => {
-                    if (!err && data && !isNaN(data.format.duration)) {
-                        return resolve(new InputMedia(0, path.parse(file), data))
-                    }
-                    else if (err) {
-                        return reject(err.message)
-                    }
-                    else {
-                        return reject('File is not a media')
-                    }
-                })
-            }
+
+            ffprobe(file, ['-show_chapters'], (err, data) => {
+                if (!err && data && !isNaN(data.format.duration)) {
+                    return resolve(new InputMedia(0, path.parse(file), data))
+                }
+                else if (err) {
+                    return reject(err.message)
+                }
+                else {
+                    return reject('File is not a media')
+                }
+            })
         })
     }
 
     private onAddFile(file: string) {
         this.createInput(file)
-            .then(input => this.onInput(input))
+            .then(input => this.callback(input))
             .catch(reason => logger.warn("'%s' has been ignored: %s", file, reason))
     }
 
@@ -80,48 +91,79 @@ export class DirectoryWatcher {
         logger.info("Unwatching: '%s'", path)
         this.watcher.unwatch(path)
     }
+}
 
-    private isExcludedFromList(file: string): boolean {
-        const excludesListPath = path.resolve(this.profile.output.directory, 'excludes.list')
+interface FileFilter {
+
+    reason(): string
+
+    test(file: string): boolean
+}
+
+class ExcludeListFilter implements FileFilter {
+
+    private readonly directory: string
+
+    constructor(config: InputConfig) {
+        this.directory = config.directory
+    }
+
+    reason(): string {
+        return "File has already been processed (registered in 'excludes.list')"
+    }
+
+    test(file: string): boolean {
+        const excludesListPath = path.resolve(this.directory, 'excludes.list')
+
+        // Excluded by default
+        let included: boolean = false
 
         try {
-            let stats = fs.statSync(excludesListPath)
+            const stats = fs.statSync(excludesListPath)
             if (!stats) { // Excludes list does not exist
-                return false
+                included = true
             }
             else {
                 let lines = fs.readFileSync(excludesListPath, {encoding: 'utf-8'}).split('\n')
-                return !!lines.filter(l => l === path.relative(this.profile.input.directory, file))
+                included = !lines.filter(l => l === path.relative(this.directory, file))
             }
         }
         catch (e) {
-            return false
+            included = true
         }
+
+        return included
+    }
+}
+
+class ExtensionFilter implements FileFilter {
+
+    private readonly include: RegExp
+    private readonly exclude: RegExp
+
+    constructor(config: InputConfig) {
+        this.include = config.include
+        this.exclude = config.exclude
     }
 
-    private isExcludedFromProfile(file: string): boolean {
-        // TODO Move to configuration validator
-        if (!this.profile.input) {
-            throw new Error(`Missing 'input' in '${this.profile.id}', all files are excluded by default`)
-        }
-        else if (!this.profile.input.includes && !this.profile.input.excludes) {
-            throw new Error(`Missing 'includes' or 'excludes' in '${this.profile.id}#input', all files are excluded by default`)
-        }
+    reason(): string {
+        return "File extension is excluded in profile (input.include | input.exclude)"
+    }
 
+    test(file: string): boolean {
         const extension = path.parse(file).ext.replace(/^\./, '')
 
         // Excluded by default
-        let includes: boolean = false
-        let excludes: boolean = true
+        let included: boolean = false
 
-        if (this.profile.input.includes) {
-            includes = extension.search(this.profile.input.includes) >= 0
+        if (this.include) {
+            included = !!extension.match(new RegExp(`^(?:${this.include})$`))
         }
 
-        if (this.profile.input.excludes) {
-            excludes = extension.search(this.profile.input.excludes) >= 0
+        if (this.exclude) {
+            included = !extension.match(new RegExp(`^(?:${this.exclude})$`))
         }
 
-        return !includes && excludes
+        return included
     }
 }

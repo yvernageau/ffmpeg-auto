@@ -57,7 +57,7 @@ logger.info('watch   = %s', args.watch)
 // TODO Validate profile
 
 const scheduler = new ExecutorScheduler(profile)
-const watcher = new DirectoryWatcher(profile, input => scheduler.schedule(input), args.watch)
+const watcher = new DirectoryWatcher(profile.input, args.watch, input => scheduler.schedule(input))
 
 // Add the initial directory
 watcher.watch(args.input)
