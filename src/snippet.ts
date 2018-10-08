@@ -24,7 +24,7 @@ type SnippetFunction<T> = (context: SnippetContext) => T
 function parseFunction<T>(body: string): SnippetFunction<T> {
     return (context: SnippetContext) => {
         // Add the 'return' declaration if missing (in case of simple function)
-        if (body.search(/return/) < 0) {
+        if (!body.match(/return/)) {
             body = `return ${body}`
         }
 
@@ -97,10 +97,10 @@ export class DefaultSnippetResolver implements SnippetResolver {
 
         let result: string = snippet
 
-        if (result.search(regexp) >= 0) {
+        if (!!result.match(regexp)) {
             let replacement = shortcut.replacement
 
-            if (replacement ? replacement.search(REGEX_EXECUTABLE) >= 0 : false) {
+            if (replacement ? !!replacement.match(REGEX_EXECUTABLE) : false) {
                 replacement = this.resolveFunction(replacement, context)
             }
 
@@ -151,9 +151,9 @@ const shortcuts: SnippetShortcut[] = [
         snippet: 'label', // 'forced' | 'sdh'
         replacement:
             "{{" +
-            "(stream.disposition && stream.disposition.forced === 1) || (stream.tags && stream.tags.title && stream.tags.title.search(/forced/i) >= 0) " +
+            "(stream.disposition && stream.disposition.forced === 1) || (stream.tags && stream.tags.title && !!stream.tags.title.match(/forced/i)) " +
             "? 'forced' " +
-            ": (stream.disposition && stream.disposition.hearing_impaired === 1) || (stream.tags && stream.tags.title && stream.tags.title.search(/hi|sdh/i) >= 0) " +
+            ": (stream.disposition && stream.disposition.hearing_impaired === 1) || (stream.tags && stream.tags.title && !!stream.tags.title.match(/hi|sdh/i)) " +
             "? 'sdh' " +
             ": '' " +
             "}}"

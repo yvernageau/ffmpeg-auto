@@ -96,8 +96,8 @@ export class Executor {
                 .on('progress', progress => {
                     this.listeners.forEach(l => l.onProgress(progress))
                 })
-                .on('stderr', line => {
-                    if (line.search(/^frame=\s*\d+/) < 0 && line.search(/Press /) < 0) { // Skip progress and prompt
+                .on('stderr', (line: string) => {
+                    if (!line.match(/^frame=\s*\d+/) && !line.match(/Press /)) { // Skip progress and prompt
                         this.listeners.forEach(l => l.onLine(line))
                     }
                 })

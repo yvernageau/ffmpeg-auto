@@ -122,7 +122,7 @@ class DefaultMappingBuilder extends MappingBuilder {
             if (localOptions && localOptions.length > 0) {
                 localOptions.forEach(o => {
                     let optionParams: string[] = Array.isArray(o.params) ? o.params : [o.params]
-                    if (optionParams.some(p => p.search(/-map/) >= 0)) {
+                    if (optionParams.some(p => !!p.match(/-map/))) {
                         output.streams.push({
                             index: streamsCount++,
                             source: s,
