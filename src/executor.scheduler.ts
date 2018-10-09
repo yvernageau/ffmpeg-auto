@@ -1,5 +1,6 @@
 import * as Queue from 'better-queue'
 import {ProcessFunctionCb} from 'better-queue'
+import * as fs from 'fs-extra'
 import {Executor} from './executor'
 import {LoggerFactory} from './logger'
 import {InputMedia} from './media'
@@ -41,10 +42,12 @@ export class ExecutorScheduler {
     }
 
     private process(input: InputMedia, callback: ProcessFunctionCb<never>) {
-        new Executor(this.profile, input)
-            .execute()
+        fs.stat(input.resolvePath())
+            .then((() => new Executor(this.profile, input).execute()
+                    .catch(reason => callback(reason))
+                    .then(() => callback(null))
+            ))
             .catch(reason => callback(reason))
-            .then(() => callback(null))
     }
 
     private onQueued(id: string, input: InputMedia) {
