@@ -95,6 +95,10 @@ export class Watcher {
     }
 
     private onAddDirectory(path: string) {
+        if (!!path.match(/@eaDir/)) { // Exception on Synology NAS
+            return
+        }
+
         logger.info("Watching: '%s' ...", path)
         this.watcher.add(path)
     }
