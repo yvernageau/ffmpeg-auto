@@ -1,4 +1,5 @@
 import * as fs from 'fs-extra'
+import {CodecType} from './media'
 import {Snippet, Snippets} from './snippet'
 
 export class Profile {
@@ -56,6 +57,4 @@ export class Mapping extends Task {
 export class Option extends Task {
 }
 
-// TODO ComposableStreamSelectors can be grouped in an array
-export type ComposableStreamSelector = 'video' | 'audio' | 'subtitle'
-export type StreamSelector = 'all' | 'none' | 'chapters' | ComposableStreamSelector
+export type StreamSelector = 'all' | 'none' | 'chapters' | CodecType | CodecType[]

@@ -1,8 +1,7 @@
 import * as path from 'path'
-import {ParsedPath} from 'path'
 import {Snippet} from './snippet'
 
-export class Path {
+export type Path = {
     parent: string
     filename: string
     extension: string
@@ -25,7 +24,7 @@ export class Media {
 export class InputMedia extends Media {
     readonly streams: InputStream[]
     readonly format: Format
-    readonly chapters: Chapter[]
+    readonly chapters?: Chapter[]
 
     constructor(id: number, path: ParsedPath, meta: any) {
         super(id, {
@@ -54,18 +53,23 @@ export class OutputMedia extends Media {
     }
 }
 
-export class Stream {
+export type Stream = {
     index: number
 }
 
-export class InputStream extends Stream {
+export type CodecType = 'video' | 'audio' | 'subtitle'
+
+export type InputStream = Stream & {
     readonly [key: string]: any
+
+    readonly codec_name: string
+    readonly codec_type: CodecType
 
     readonly disposition?: Dispositions
     readonly tags?: Tags
 }
 
-export class OutputStream extends Stream {
+export type OutputStream = Stream & {
     source: InputStream
     params: Snippet[]
 }
@@ -84,11 +88,10 @@ export type Chapter = {
 
 export type Tags = {
     readonly [key: string]: any
-
-    readonly title?: string
-    readonly language?: string
 }
 
 export type Dispositions = {
-    readonly [key: string]: 0 | 1
+    readonly [key: string]: NumericBoolean
 }
+
+export type NumericBoolean = 0 | 1 // 0 = false | 1 = true
