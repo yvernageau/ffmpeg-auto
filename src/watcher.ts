@@ -66,7 +66,17 @@ export class Watcher {
 
             ffprobe(file, ['-show_chapters'], (err, data) => {
                 if (!err && data && !isNaN(data.format.duration)) {
-                    return resolve(new InputMedia(0, path.parse(file), data))
+                    let filepath = path.parse(file)
+
+                    return resolve(new InputMedia(
+                        0,
+                        {
+                            parent: filepath.dir,
+                            filename: filepath.name,
+                            extension: filepath.ext.replace(/^\./, '')
+                        },
+                        data
+                    ))
                 }
                 else if (err) {
                     return reject(err.message)

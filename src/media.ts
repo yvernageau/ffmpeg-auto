@@ -26,12 +26,8 @@ export class InputMedia extends Media {
     readonly format: Format
     readonly chapters?: Chapter[]
 
-    constructor(id: number, path: ParsedPath, meta: any) {
-        super(id, {
-            parent: path.dir,
-            filename: path.name,
-            extension: path.ext.replace(/^\./, '')
-        })
+    constructor(id: number, path: Path, meta: any) {
+        super(id, path)
 
         this.streams = meta.streams
         this.format = meta.format
