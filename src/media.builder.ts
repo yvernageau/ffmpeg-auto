@@ -4,7 +4,7 @@ import {Chapter, OutputMedia} from './media'
 import {Mapping, Option} from './profile'
 import {DefaultSnippetResolver, parsePredicate, SnippetContext, SnippetResolver} from './snippet'
 
-const logger = LoggerFactory.get('builder')
+const logger = LoggerFactory.createDefault('builder')
 
 function resolveParameters(o: OutputMedia, context: SnippetContext): OutputMedia {
     const resolver: SnippetResolver = new DefaultSnippetResolver()

@@ -4,7 +4,7 @@ import {LoggerFactory} from './logger'
 import {Profile} from './profile'
 import {Watcher} from './watcher'
 
-const logger = LoggerFactory.get('config')
+const logger = LoggerFactory.createDefault('config')
 
 const args = yargs
     .usage('$0 [options]')

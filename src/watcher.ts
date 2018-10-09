@@ -6,7 +6,7 @@ import {LoggerFactory} from './logger'
 import {InputMedia} from './media'
 import {InputConfig} from './profile'
 
-const logger = LoggerFactory.get('watcher')
+const logger = LoggerFactory.createDefault('watcher')
 
 export type WatcherCallback = (input: InputMedia) => void
 

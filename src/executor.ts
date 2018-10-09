@@ -4,13 +4,15 @@ import * as moment from 'moment'
 import {Duration, Moment} from 'moment'
 import 'moment-duration-format'
 import * as path from "path"
+import * as winston from 'winston'
+import {format} from 'winston'
 import {LoggerFactory} from './logger'
 import {InputMedia, InputStream, OutputMedia} from './media'
 import {MediaBuilder} from './media.builder'
 import {Profile} from './profile'
 import {DefaultSnippetResolver} from './snippet'
 
-const logger = LoggerFactory.get('ffmpeg')
+const logger = LoggerFactory.createDefault('ffmpeg')
 
 export class Executor {
 
@@ -154,63 +156,50 @@ export class LoggingExecutorListener extends ExecutorListener {
     }
 
     onStart(commandLine: string) {
-        logger.info('Executing: %s', commandLine)
+        logger.info('Executing: $ %s', commandLine)
 
-        this.outputLines.push(commandLine)
+        this.outputLines.push('$ ' + commandLine)
         this.outputLines.push('')
     }
 
     onLine(line: string) {
         logger.debug(line)
 
-        if (this.executor.profile.output.writeLog) {
-            this.outputLines.push(line)
-        }
+        this.outputLines.push(line)
     }
 
     onEnd() {
         logger.info('Transcoding succeeded')
 
         if (this.executor.profile.output.writeLog) {
-            const output = this.outputLines.join('\n')
-
-            this.writeLogFile(output)
-                .then(logFile => {
-                    logger.info('Log written at %s', logFile)
-                })
-                .catch(reason => {
-                    logger.error('Failed to write the log file: %s', reason)
-                    logger.info('\n%s', output)
-                })
+            let logFile = this.writeLogFile('info', this.outputLines)
+            logger.info('Log written at %s', logFile)
         }
     }
 
     onFailed() {
         logger.error('Transcoding failed')
 
-        const output = this.outputLines.join('\n')
-
-        this.writeLogFile(output)
-            .then(logFile => {
-                logger.error('For more details, see log at %s', logFile)
-            })
-            .catch(reason => {
-                logger.error('Failed to write the log file: %s', reason)
-                logger.error('\n%s', output)
-            })
+        let logFile = this.writeLogFile('error', this.outputLines)
+        logger.error('For more details, see log at %s', logFile)
     }
 
-    private async writeLogFile(content: string): Promise<string> {
-        return new Promise<string>((resolve, reject) => {
-            const datetime = moment().format('YYYYMMDD-HHmmssSSS')
-            const logFile = path.resolve(this.executor.profile.output.directory, `${this.executor.input.path.filename}.${datetime}.log`)
+    private writeLogFile(level: string, lines: string[]): string {
+        const directory = this.executor.profile.output.directory
+        const filename = `${this.executor.input.path.filename}.${moment().format('YYYYMMDD-HHmmssSSS')}.log`
 
-            fs.writeFile(logFile, content, e => {
-                if (e) return reject(e)
+        const fileLogger = winston.createLogger({
+            format: format.simple(),
+            level: 'info',
+            transports: new winston.transports.File({
+                dirname: directory,
+                filename: filename,
             })
-
-            return resolve(logFile)
         })
+
+        lines.forEach(l => fileLogger.log(level, l))
+
+        return path.resolve(directory, filename)
     }
 }
 

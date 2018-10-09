@@ -2,7 +2,7 @@ import {LoggerFactory} from './logger'
 import {Chapter, InputMedia, InputStream, OutputMedia, OutputStream} from './media'
 import {Profile} from './profile'
 
-const logger = LoggerFactory.get('snippet')
+const logger = LoggerFactory.createDefault('snippet')
 
 export type Snippet = string
 export type Snippets = Snippet | Snippet[]

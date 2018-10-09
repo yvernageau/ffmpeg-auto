@@ -5,7 +5,7 @@ import {LoggerFactory} from './logger'
 import {InputMedia} from './media'
 import {Profile} from './profile'
 
-const logger = LoggerFactory.get('scheduler')
+const logger = LoggerFactory.createDefault('scheduler')
 
 export class ExecutorScheduler {
 

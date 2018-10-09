@@ -1,36 +1,17 @@
 import * as winston from 'winston'
 import {format, Logger, LoggerOptions, transports} from 'winston'
 
-const loggers = winston.loggers
-
 export class LoggerFactory {
 
-    static _debug: boolean = true
+    static debug: boolean = false
 
-    static get debug(): boolean {
-        return this._debug
-    }
-
-    static set debug(debug: boolean) {
-        if (this._debug !== debug) {
-            this._debug = debug
-            loggers.loggers.forEach(l => l.level = debug ? 'debug' : 'info')
-        }
-    }
-
-    static get(label: string): Logger {
-        let logger = loggers.has(label) ? loggers.get(label) : loggers.add(label, LoggerFactory.getOptions(label))
-
-        if (logger.level !== 'debug' && LoggerFactory._debug) {
-            logger.level = 'debug'
-        }
-
-        return logger
+    static createDefault(label: string): Logger {
+        return winston.createLogger(LoggerFactory.getOptions(label))
     }
 
     private static getOptions(label: string): LoggerOptions {
         return {
-            level: LoggerFactory._debug ? 'debug' : 'info',
+            level: LoggerFactory.debug ? 'debug' : 'info',
             format: format.combine(
                 format.label({label: label}),
                 format.timestamp(),
