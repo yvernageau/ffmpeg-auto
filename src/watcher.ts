@@ -8,7 +8,9 @@ import {InputConfig} from './profile'
 
 const logger = LoggerFactory.get('watcher')
 
-export class DirectoryWatcher {
+export type WatcherCallback = (input: InputMedia) => void
+
+export class Watcher {
 
     private readonly config: InputConfig
     private readonly callback: (input: InputMedia) => void
@@ -16,7 +18,7 @@ export class DirectoryWatcher {
     private readonly watcher: FSWatcher
     private readonly filters: FileFilter[] = []
 
-    constructor(config: InputConfig, watch: boolean, callback: (input: InputMedia) => void) {
+    constructor(config: InputConfig, watch: boolean, callback: WatcherCallback) {
         // TODO Move to configuration validator
         if (!config) {
             throw new Error(`Missing 'input' in profile, all files are excluded by default`)
