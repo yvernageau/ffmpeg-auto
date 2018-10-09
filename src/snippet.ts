@@ -8,7 +8,7 @@ export type Snippet = string
 export type Snippets = Snippet | Snippet[]
 
 const REGEX: RegExp = /{((?:(?![{}]).)*)}/gi
-const REGEX_EXECUTABLE: RegExp = /{{((?:(?!{{|}}).)*)}}/gi
+const REGEX_EXECUTABLE: RegExp = /{{((?:(?!{{).)*)}}/gi
 
 export class SnippetContext {
     profile: Profile
@@ -17,6 +17,86 @@ export class SnippetContext {
     stream?: InputStream
     outputStream?: OutputStream
     chapter?: Chapter // Only when 'mapping.on == chapters'
+}
+
+export interface SnippetResolver {
+    resolve(snippets: Snippets, context: SnippetContext): string
+}
+
+export class DefaultSnippetResolver implements SnippetResolver {
+
+    private readonly resolvers: SnippetResolver[] = [
+        new BooleanSnippetResolver(),
+        new NumberSnippetResolver(),
+        new ShortcutSnippetResolver(),
+        new FunctionSnippetResolver()
+    ]
+
+    static checkComplete(result: string): string {
+        const unformatted = result.match(REGEX)
+        if (unformatted) {
+            throw new Error('Unknown pattern(s): ' + unformatted.join('; '))
+        }
+        return result
+    }
+
+    resolve(snippets: Snippets, context: SnippetContext): string {
+        const snippet: string = (snippets ? Array.isArray(snippets) ? snippets : [snippets] : []).join(' ')
+        const result = this.resolvers.reduce((result, resolver) => resolver.resolve(result, context), snippet)
+
+        logger.debug("Resolved: '%s' => '%s'", snippet, result)
+
+        return DefaultSnippetResolver.checkComplete(result)
+    }
+}
+
+class BooleanSnippetResolver implements SnippetResolver {
+
+    resolve(snippet: string, context: SnippetContext): string {
+        return snippet.replace(/{(true|false)}/gi, '$1')
+    }
+}
+
+class NumberSnippetResolver implements SnippetResolver {
+
+    resolve(snippet: string, context: SnippetContext): string {
+        return snippet.replace(/{(\d+(?:.\d+)?)}/gi, '$1')
+    }
+}
+
+class FunctionSnippetResolver implements SnippetResolver {
+
+    resolve(snippet: string, context: SnippetContext): string {
+        // Resolve functions
+        return snippet.replace(REGEX_EXECUTABLE, (match, body: string) => parseFunction<string>(body.trim())(context))
+    }
+}
+
+class ShortcutSnippetResolver implements SnippetResolver {
+
+    static resolveShortcut(snippet: string, context: SnippetContext, shortcut: SnippetShortcut) {
+        // noinspection RegExpRedundantEscape
+        const regexp = new RegExp(`{([\\._-])?${shortcut.snippet}([\\._-])?}`, 'gi')
+
+        let result: string = snippet
+
+        if (!!result.match(regexp)) {
+            let replacement = shortcut.replacement
+
+            if (!!replacement.match(REGEX_EXECUTABLE)) {
+                replacement = new FunctionSnippetResolver().resolve(replacement, context)
+            }
+
+            result = result.replace(regexp, replacement ? `$1${replacement}$2` : '')
+        }
+
+        return result
+    }
+
+    resolve(snippet: string, context: SnippetContext): string {
+        // Resolve variables & shortcuts
+        return shortcuts.reduce((result, s) => ShortcutSnippetResolver.resolveShortcut(result, context, s), snippet)
+    }
 }
 
 type SnippetFunction<T> = (context: SnippetContext) => T
@@ -42,8 +122,6 @@ function parseFunction<T>(body: string): SnippetFunction<T> {
             throw new Error(`Failed to resolve { ${body} } : returns ${result}`)
         }
 
-        logger.verbose('Resolved { %s } = %s', body, result)
-
         return result
     }
 }
@@ -65,78 +143,23 @@ export function parsePredicate(exec: Snippets): SnippetPredicate {
     return result
 }
 
-export interface SnippetResolver {
-    resolve(snippet: Snippets, context: SnippetContext): string
-}
-
-export class DefaultSnippetResolver implements SnippetResolver {
-
-    resolve(snippet: Snippets, context: SnippetContext): string {
-        let result: string = (snippet ? Array.isArray(snippet) ? snippet : [snippet] : []).join(' ')
-
-        // TODO Resolve numbers (\d+(?:.\d+)?)
-        // TODO Resolve booleans (true | false)
-
-        // Resolve variables & shortcuts
-        result = shortcuts.reduce((result, s) => this.resolveShorcut(s, result, context), result)
-
-        // Resolve functions
-        result = this.resolveFunction(result, context)
-
-        let unformatted = result.match(REGEX)
-        if (unformatted) {
-            throw new Error('Unknown pattern(s): ' + unformatted.join('; '))
-        }
-
-        return result
-    }
-
-    private resolveShorcut(shortcut: SnippetShortcut, snippet: string, context: SnippetContext): string {
-        // noinspection RegExpRedundantEscape
-        const regexp = new RegExp(`{([\\._-])?${shortcut.snippet}([\\._-])?}`, 'gi')
-
-        let result: string = snippet
-
-        if (!!result.match(regexp)) {
-            let replacement = shortcut.replacement
-
-            if (replacement ? !!replacement.match(REGEX_EXECUTABLE) : false) {
-                replacement = this.resolveFunction(replacement, context)
-            }
-
-            if (replacement) {
-                result = result.replace(regexp, `$1${replacement}$2`)
-            }
-            else {
-                result = result.replace(regexp, '')
-            }
-        }
-
-        return result
-    }
-
-    private resolveFunction(snippet: string, context: SnippetContext): string {
-        return snippet.replace(REGEX_EXECUTABLE, (match, body: string) => parseFunction<string>(body.trim())(context))
-    }
-}
-
 type SnippetShortcut = {
-    snippet: string | RegExp
+    snippet: string
     replacement: string | Snippet
 }
 
 const shortcuts: SnippetShortcut[] = [
     {
         snippet: 'iid', // Input stream identifier
-        replacement: '{{ input.id}}:{{stream.index}}'
+        replacement: '{{input.id}}:{{stream.index}}'
     },
     {
         snippet: 'oid', // Output stream identifier
-        replacement: '{{ outputStream.index}}'
+        replacement: '{{outputStream.index}}'
     },
     {
         snippet: 'fn', // Input filename without extension
-        replacement: '{{ input.path.filename}}'
+        replacement: '{{input.path.filename}}'
     },
     {
         snippet: 'lng', // Input stream language | 'und'
