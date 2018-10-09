@@ -38,8 +38,8 @@ export class Watcher {
                 persistent: watch
             })
             .on('add', path => this.onAddFile(path))
-            .on('addDir', path => this.onAddDirectory(path))
-            .on('unlinkDir', path => this.onRemoveDirectory(path))
+
+        // TODO Intercept 'unlink' and unsubscribe the 'file' from the queue
 
         process.on('exit', () => this.watcher.close())
 
@@ -49,12 +49,13 @@ export class Watcher {
         )
     }
 
-    watch(...paths: string[]) {
-        this.watcher.add(paths)
+    watch(directory: string) {
+        logger.info('Watching %s ...', directory)
+        this.watcher.add(directory)
     }
 
-    unwatch(...paths: string[]) {
-        this.watcher.unwatch(paths)
+    unwatch(directory: string) {
+        this.watcher.unwatch(directory)
     }
 
     async createInput(file: string): Promise<InputMedia> {
@@ -91,21 +92,7 @@ export class Watcher {
     private onAddFile(file: string) {
         this.createInput(file)
             .then(input => this.callback(input))
-            .catch(reason => logger.warn("'%s' has been ignored: %s", file, reason))
-    }
-
-    private onAddDirectory(path: string) {
-        if (!!path.match(/@eaDir/)) { // Exception on Synology NAS
-            return
-        }
-
-        logger.info("Watching: '%s' ...", path)
-        this.watcher.add(path)
-    }
-
-    private onRemoveDirectory(path: string) {
-        logger.info("Unwatching: '%s'", path)
-        this.watcher.unwatch(path)
+            .catch(reason => logger.debug("'%s' has been ignored: %s", file, reason))
     }
 }
 
