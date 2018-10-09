@@ -174,12 +174,15 @@ class ChapterMappingBuilder extends MappingBuilder {
 
         // Add a dummy chapter from the end of the last chapter to the end of the source
         if (lastChapter.end_time !== duration) {
+            const timeBaseFractionParts = (<string>lastChapter.time_base).split('/').map(i => parseInt(i))
+            let timeBaseFraction = timeBaseFractionParts[0] / timeBaseFractionParts[1]
+
             chapters.push({
                 id: 0,
                 time_base: lastChapter.time_base,
                 start: lastChapter.end,
                 start_time: lastChapter.end_time,
-                end: context.input.format.duration * 1e6, // TODO Calculate the factor
+                end: context.input.format.duration / timeBaseFraction,
                 end_time: duration
             })
         }
