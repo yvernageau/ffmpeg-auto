@@ -14,7 +14,7 @@ import {DefaultSnippetResolver} from './snippet'
 
 const logger = LoggerFactory.createDefault('ffmpeg')
 
-export class Executor {
+export class Worker {
 
     readonly profile: Profile
     readonly input: InputMedia
@@ -120,9 +120,9 @@ export class Executor {
 
 export abstract class ExecutorListener {
 
-    protected executor: Executor
+    protected executor: Worker
 
-    protected constructor(executor: Executor) {
+    protected constructor(executor: Worker) {
         this.executor = executor
     }
 
@@ -151,7 +151,7 @@ export class LoggingExecutorListener extends ExecutorListener {
 
     private readonly outputLines: string[] = []
 
-    constructor(executor: Executor) {
+    constructor(executor: Worker) {
         super(executor)
     }
 
@@ -219,7 +219,7 @@ export class ProgressExecutorListener extends ExecutorListener {
     progress: number = -1
     progressStep: number = 5
 
-    constructor(executor: Executor) {
+    constructor(executor: Worker) {
         super(executor)
     }
 
@@ -290,14 +290,18 @@ export class ProgressExecutorListener extends ExecutorListener {
 
 class PostExecutorListener extends ExecutorListener {
 
-    constructor(executor: Executor) {
+    private readonly lockFile: string
+
+    constructor(executor: Worker) {
         super(executor)
+
+        this.lockFile = path.resolve(this.executor.profile.output.directory, 'excludes.list')
     }
 
     onEnd() {
         const inputFile = path.relative(this.executor.profile.input.directory, this.executor.input.resolvePath())
-        const lockFile = path.resolve(this.executor.profile.output.directory, 'excludes.list')
-        fs.appendFile(lockFile, inputFile + '\n').catch(reason => {
+
+        this.register(inputFile).catch(reason => {
             // TODO Save the filename and retry later
             logger.warn("Failed to write in the excludes list: %s", reason)
             logger.warn("Requires to be append manually: '%s'", inputFile)
@@ -306,22 +310,26 @@ class PostExecutorListener extends ExecutorListener {
 
     onFailed() {
         // noinspection JSIgnoredPromiseFromCall
-        this.cleanOutputs()
-            .catch(reason => logger.warn(reason))
+        return this.unlinkOutputs().catch(reason => logger.warn(reason))
     }
 
-    private async cleanOutputs() {
-        this.executor.outputs
+    private async register(file: string) {
+        return fs.appendFile(this.lockFile, file + '\n')
+    }
+
+    private async unlinkOutputs() {
+        return this.executor.outputs
             .map(o => o.resolvePath())
-            .forEach(f => {
-                fs.stat(f, e => {
-                    if (e) {
-                    }
-                    fs.unlink(f, (e2) => {
-                        if (e2) {
-                        }
-                    })
-                })
+            .forEach(f => this.unlinkIfPresent(f))
+    }
+
+    private unlinkIfPresent(file: string) {
+        fs.stat(file, se => {
+            if (se) logger.warn(se.message)
+
+            fs.unlink(file, ue => {
+                if (ue) logger.warn(ue.message)
             })
+        })
     }
 }

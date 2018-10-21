@@ -1,14 +1,14 @@
 import * as Queue from 'better-queue'
 import {ProcessFunctionCb} from 'better-queue'
 import * as fs from 'fs-extra'
-import {Executor} from './executor'
 import {LoggerFactory} from './logger'
 import {InputMedia} from './media'
 import {Profile} from './profile'
+import {Worker} from './worker'
 
 const logger = LoggerFactory.createDefault('scheduler')
 
-export class ExecutorScheduler {
+export class Scheduler {
 
     private readonly profile: Profile
 
@@ -43,7 +43,7 @@ export class ExecutorScheduler {
 
     private process(input: InputMedia, callback: ProcessFunctionCb<never>) {
         fs.stat(input.resolvePath())
-            .then((() => new Executor(this.profile, input).execute()
+            .then((() => new Worker(this.profile, input).execute()
                     .catch(reason => callback(reason))
                     .then(() => callback(null))
             ))

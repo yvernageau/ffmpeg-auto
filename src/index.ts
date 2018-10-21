@@ -1,7 +1,7 @@
 import * as yargs from 'yargs'
-import {ExecutorScheduler} from './executor.scheduler'
 import {LoggerFactory} from './logger'
 import {Profile} from './profile'
+import {Scheduler} from './scheduler'
 import {Watcher} from './watcher'
 
 const logger = LoggerFactory.createDefault('config')
@@ -56,7 +56,7 @@ logger.info('watch   = %s', args.watch)
 
 // TODO Validate profile
 
-const scheduler = new ExecutorScheduler(profile)
+const scheduler = new Scheduler(profile)
 const watcher = new Watcher(profile.input, args.watch, input => scheduler.schedule(input))
 
 // Add the initial directory
