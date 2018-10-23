@@ -53,6 +53,7 @@ logger.info('profile = %s', args.profile)
 logger.info('input   = %s', args.input)
 logger.info('output  = %s', args.output)
 logger.info('watch   = %s', args.watch)
+logger.info('debug   = %s', args.debug)
 
 // TODO Validate profile
 
