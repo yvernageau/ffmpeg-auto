@@ -27,7 +27,11 @@ export class Worker {
     constructor(profile: Profile, input: InputMedia) {
         this.profile = profile
         this.input = input
-        this.outputs = new MediaBuilder().build({profile: profile, input: input})
+
+        this.outputs = new MediaBuilder().build({
+            profile: this.profile,
+            input: this.input
+        })
 
         this.listeners.push(
             new LoggingExecutorListener(this),
@@ -299,6 +303,13 @@ class PostExecutorListener extends ExecutorListener {
     }
 
     onEnd() {
+        // Defines the owner if defined
+        if (process.env.UID && process.env.GID) {
+            this.executor.outputs
+                .map(o => o.resolvePath())
+                .forEach(p => fs.chownSync(p, parseInt(process.env.UID), parseInt(process.env.GID)))
+        }
+
         const inputFile = path.relative(this.executor.profile.input.directory, this.executor.input.resolvePath())
 
         this.register(inputFile).catch(reason => {
