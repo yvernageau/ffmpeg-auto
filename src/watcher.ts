@@ -87,9 +87,12 @@ export class Watcher {
         this.pendingTimer = setTimeout(() => this.notifyPendingFiles(), 60000)
     }
 
-    private notifyPendingFiles() {
+    private async notifyPendingFiles() {
         // TODO Regroups external resources (same base name) and includes them as input (subtitles + audio -> container)
-        this.pendingFiles.sort().forEach(p => this.filterAndCreateInput(p).then(input => this.callback(input)))
+        const sortedFiles = this.pendingFiles.sort()
+        for (let file of sortedFiles) {
+            await this.filterAndCreateInput(file).then(input => this.callback(input))
+        }
 
         // Clear the pending files and timer
         this.pendingFiles = []
