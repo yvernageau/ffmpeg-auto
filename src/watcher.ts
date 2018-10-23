@@ -12,8 +12,11 @@ export type WatcherCallback = (input: InputMedia) => void
 
 export class Watcher {
 
+    private pendingTimer: any
+    private pendingFiles: string[] = []
+
     private readonly config: InputConfig
-    private readonly callback: (input: InputMedia) => void
+    private readonly callback: WatcherCallback
 
     private readonly watcher: FSWatcher
     private readonly filters: FileFilter[] = []
@@ -37,9 +40,9 @@ export class Watcher {
                 ignorePermissionErrors: true,
                 persistent: watch
             })
-            .on('add', path => this.onAddFile(path))
-
-        // TODO Intercept 'unlink' and unsubscribe the 'file' from the queue
+            .on('add', path => this.onAdd(path))
+            .on('unlink', path => this.onRemove(path))
+            .on('change', path => this.onChange(path))
 
         process.on('exit', () => this.watcher.close())
 
@@ -58,7 +61,44 @@ export class Watcher {
         this.watcher.unwatch(directory)
     }
 
-    async createInput(file: string): Promise<InputMedia> {
+    private onAdd(file: string) {
+        this.pendingFiles.push(file)
+        logger.debug("Added '%s' ...")
+        this.restartTimer()
+    }
+
+    private onRemove(file: string) {
+        const index = this.pendingFiles.indexOf(file)
+        if (index > -1) {
+            this.pendingFiles.splice(index)
+            logger.debug("Removed '%s' ...")
+            this.restartTimer()
+        }
+    }
+
+    private onChange(file: string) {
+        this.restartTimer()
+    }
+
+    private restartTimer() {
+        if (this.pendingTimer) {
+            clearTimeout(this.pendingTimer)
+        }
+        this.pendingTimer = setTimeout(() => this.notifyPendingFiles(), 60000)
+    }
+
+    private notifyPendingFiles() {
+        // TODO Regroups external resources (same base name) and includes them as input (subtitles + audio -> container)
+        this.pendingFiles.sort().forEach(p => this.filterAndCreateInput(p).then(input => this.callback(input)))
+
+        // Clear the pending files and timer
+        this.pendingFiles = []
+
+        clearTimeout(this.pendingTimer)
+        this.pendingTimer = undefined
+    }
+
+    private async filterAndCreateInput(file: string): Promise<InputMedia> {
         return new Promise<InputMedia>((resolve, reject) => {
             const failedFilters = this.filters.filter(f => !f.test(file))
             if (failedFilters && failedFilters.length > 0) {
@@ -87,12 +127,6 @@ export class Watcher {
                 }
             })
         })
-    }
-
-    private onAddFile(file: string) {
-        this.createInput(file)
-            .then(input => this.callback(input))
-            .catch(reason => logger.debug("'%s' has been ignored: %s", file, reason))
     }
 }
 
