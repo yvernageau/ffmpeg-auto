@@ -8,7 +8,7 @@ import {InputMedia, OutputMedia} from './media'
 import {OutputMediaBuilder} from './media.builder'
 import {Profile} from './profile'
 import {DefaultSnippetResolver} from './snippet'
-import {LoggingWorkerListener, PostWorkerListener, ProgressWorkerListener} from './worker.listener'
+import {LoggingWorkerListener, PostWorkerListeners, ProgressWorkerListener} from './worker.listener'
 
 const logger = LoggerFactory.get('worker')
 
@@ -43,7 +43,8 @@ export class Worker extends EventEmitter {
         // Register the default listeners
         new LoggingWorkerListener(this)
         new ProgressWorkerListener(this)
-        new PostWorkerListener(this)
+
+        PostWorkerListeners.subscribe(this)
     }
 
     async execute() {
@@ -90,7 +91,7 @@ export class Worker extends EventEmitter {
 
                 // Create missing directories and set owner
                 const outputPath = o.resolvePath(this.profile.output.directory)
-                this.createDirectories(outputPath)
+                fs.mkdirpSync(path.dirname(outputPath))
 
                 logger.debug('output:%d = %s', o.id, outputPath)
                 logger.debug('output:%d.options = %s', o.id, outputOptions.join(' '))
@@ -126,27 +127,5 @@ export class Worker extends EventEmitter {
 
             command.run()
         })
-    }
-
-    private createDirectories(outputPath: string, baseDirectory: string = this.profile.output.directory) {
-        // Create missing directories
-        fs.mkdirpSync(path.dirname(outputPath))
-
-        // Set owner (if defined)
-        if (process.env.UID && process.env.GID) {
-            const uid = parseInt(process.env.UID)
-            const gid = parseInt(process.env.GID)
-
-            const parentDirectory = baseDirectory.replace(`${path.sep}$`, '') // Remove the tailing separator
-            let currentDirectory = path.dirname(outputPath)
-            while (currentDirectory !== parentDirectory) {
-                const stat = fs.statSync(currentDirectory)
-                if (stat.uid !== uid || stat.gid !== gid) { // Ensure the owner is not already defined
-                    logger.debug("Set owner (%d:%d) of '%s'", uid, gid, currentDirectory)
-                    fs.chownSync(currentDirectory, uid, gid)
-                }
-                currentDirectory = path.dirname(currentDirectory)
-            }
-        }
     }
 }

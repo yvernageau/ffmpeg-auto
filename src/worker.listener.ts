@@ -10,11 +10,6 @@ import {Worker} from './worker'
 
 const logger = LoggerFactory.get('worker')
 
-function padStart(obj: number | string, targetLenght: number, padString: string = '\u0020'): string {
-    const s = obj.toString()
-    return padString.repeat(targetLenght - s.length) + s
-}
-
 export abstract class WorkerListener {
 
     protected worker: Worker
@@ -23,6 +18,103 @@ export abstract class WorkerListener {
         this.worker = worker
     }
 }
+
+// region Post-execution tasks
+
+export class PostWorkerListeners {
+
+    static subscribe(worker: Worker) {
+        worker.on('end', () => new SetOwnerTask(worker).execute())
+        worker.on('end', () => new UpdateExcludeListTask(worker).execute())
+        worker.on('end', () => new CleanInputTask(worker).execute())
+
+        worker.on('error', () => new CleanOutputTask(worker).execute())
+    }
+}
+
+class SetOwnerTask extends WorkerListener {
+
+    constructor(worker: Worker) {
+        super(worker)
+    }
+
+    execute() {
+        if (process.env.UID && process.env.GID) {
+            const uid = parseInt(process.env.UID)
+            const gid = parseInt(process.env.GID)
+
+            this.worker.outputs
+                .map(o => o.resolvePath(this.worker.profile.output.directory))
+                .forEach(p => this.setOwner(p, uid, gid))
+        }
+    }
+
+    private async setOwner(file: string, uid: number, gid: number) {
+        const parentDirectory = this.worker.profile.output.directory.replace(`${path.sep}$`, '') // Remove the tailing separator
+
+        // Define the owner of the file, then its parent directories until the base directory
+        let currentPath = file
+        while (currentPath !== parentDirectory) {
+            const stat = fs.statSync(currentPath)
+            if (stat.uid !== uid || stat.gid !== gid) { // Ensure the owner is not already defined
+                fs.chown(currentPath, uid, gid).catch(reason => logger.warn("Cannot define the owner (%d:%d) of '%s': %s", uid, gid, file, reason))
+            }
+            currentPath = path.dirname(currentPath)
+        }
+    }
+}
+
+class UpdateExcludeListTask extends WorkerListener {
+
+    constructor(worker: Worker) {
+        super(worker)
+    }
+
+    execute() {
+        const excludeList = path.resolve(this.worker.profile.output.directory, 'exclude.list')
+        const inputFile = this.worker.input.resolvePath(this.worker.profile.input.directory)
+        fs.appendFile(excludeList, inputFile + '\n').catch(reason => logger.warn("Failed to write '%s' in the exclude.list: %s", inputFile, reason))
+    }
+}
+
+class CleanInputTask extends WorkerListener {
+
+    constructor(worker: Worker) {
+        super(worker)
+    }
+
+    execute() {
+        if (this.worker.profile.input.remove) {
+            const inputFile = this.worker.input.resolvePath(this.worker.profile.input.directory)
+            fs.unlink(inputFile).catch(reason => logger.warn("Failed to delete '%s': %s", inputFile, reason))
+        }
+    }
+}
+
+class CleanOutputTask extends WorkerListener {
+
+    constructor(worker: Worker) {
+        super(worker)
+    }
+
+    execute() {
+        return this.worker.outputs
+            .map(o => o.resolvePath(this.worker.profile.output.directory))
+            .forEach(f => this.deleteIfPresent(f))
+    }
+
+    private deleteIfPresent(file: string) {
+        fs.stat(file, se => {
+            if (se) return
+
+            fs.unlink(file, ue => {
+                if (ue) return
+            })
+        })
+    }
+}
+
+// endregion
 
 export class LoggingWorkerListener extends WorkerListener {
 
@@ -122,6 +214,11 @@ export class ProgressWorkerListener extends WorkerListener {
         return speed.toFixed(3)
     }
 
+    private static padStart(obj: number | string, targetLenght: number, padString: string = '\u0020'): string {
+        const s = obj.toString()
+        return padString.repeat(targetLenght - s.length) + s
+    }
+
     onStart() {
         this.startTime = moment()
 
@@ -156,10 +253,10 @@ export class ProgressWorkerListener extends WorkerListener {
 
             logger.info(
                 '%s%% [%s @ %s] FPS: %s ; Elapsed: %s ; ETA: %s ; Speed: x%s',
-                padStart(percent, 3),
-                padStart(progress.frames, 6),
+                ProgressWorkerListener.padStart(percent, 3),
+                ProgressWorkerListener.padStart(progress.frames, 6),
                 progress.timemark,
-                padStart(progress.currentFps, 4),
+                ProgressWorkerListener.padStart(progress.currentFps, 4),
                 ProgressWorkerListener.formatDuration(elapsed),
                 ProgressWorkerListener.formatDuration(eta),
                 ProgressWorkerListener.formatSpeed(speed)
@@ -172,61 +269,5 @@ export class ProgressWorkerListener extends WorkerListener {
     onEnd() {
         this.endTime = moment()
         logger.info('Tooks %s', moment.duration(this.endTime.diff(this.startTime)).format('d[d] HH:mm:ss.SSS'))
-    }
-}
-
-export class PostWorkerListener extends WorkerListener {
-
-    private readonly lockFile: string
-
-    constructor(worker: Worker) {
-        super(worker)
-
-        worker.on('end', () => this.onEnd())
-        worker.on('error', () => this.onFailed())
-
-        this.lockFile = path.resolve(this.worker.profile.output.directory, 'exclude.list')
-    }
-
-    onEnd() {
-        // Defines the owner if defined
-        if (process.env.UID && process.env.GID) {
-            this.worker.outputs
-                .map(o => o.resolvePath(this.worker.profile.output.directory))
-                .forEach(p => fs.chownSync(p, parseInt(process.env.UID), parseInt(process.env.GID)))
-        }
-
-        // Register the created files in 'exclude.list'
-        const inputFile = this.worker.input.resolvePath(this.worker.profile.input.directory)
-        this.register(inputFile).catch(reason => logger.warn("Failed to write '%s' in the exclude.list: %s", inputFile, reason))
-
-        if (this.worker.profile.input.remove) {
-            fs.unlink(inputFile).catch(reason => logger.warn("Failed to delete '%s': %s", inputFile, reason))
-        }
-    }
-
-    onFailed() {
-        // noinspection JSIgnoredPromiseFromCall
-        return this.deleteIncompleteFiles().catch(reason => logger.warn(reason))
-    }
-
-    private async register(file: string) {
-        return fs.appendFile(this.lockFile, file + '\n')
-    }
-
-    private async deleteIncompleteFiles() {
-        return this.worker.outputs
-            .map(o => o.resolvePath(this.worker.profile.output.directory))
-            .forEach(f => this.deleteFileIfPresent(f))
-    }
-
-    private deleteFileIfPresent(file: string) {
-        fs.stat(file, se => {
-            if (se) return
-
-            fs.unlink(file, ue => {
-                if (ue) return
-            })
-        })
     }
 }
