@@ -96,7 +96,7 @@ const scheduler = new Scheduler(profile, (file, callback) => {
         .catch(reason => callback(reason))
 })
 
-const watcher = new Watcher(profile.input, args.watch)
+const watcher = new Watcher(profile, args.watch)
     .on('schedule', file => scheduler.schedule(file))
     .on('cancel', file => scheduler.cancel(file))
 

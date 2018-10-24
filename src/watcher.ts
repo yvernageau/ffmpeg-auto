@@ -1,10 +1,8 @@
 import {FSWatcher} from 'chokidar'
 import {EventEmitter} from 'events'
-import {ffprobe} from 'fluent-ffmpeg'
-import * as fs from 'fs-extra'
-import * as path from 'path'
 import {LoggerFactory} from './logger'
-import {InputConfig} from './profile'
+import {Profile} from './profile'
+import {AsyncFileFilter, ExcludeListFilter, ExtensionFilter, FFProbeFilter} from './watcher.filter'
 
 const logger = LoggerFactory.get('watcher')
 
@@ -12,7 +10,7 @@ export class Watcher extends EventEmitter {
 
     private static readonly TIMEOUT = 60 * 1000
 
-    private readonly config: InputConfig
+    private readonly profile: Profile
 
     private readonly watcher: FSWatcher
     private readonly filters: AsyncFileFilter[] = []
@@ -20,23 +18,15 @@ export class Watcher extends EventEmitter {
     private pendingTimer: any
     private pendingFiles: string[] = []
 
-    constructor(config: InputConfig, watch: boolean) {
+    constructor(profile: Profile, watch: boolean) {
         super()
 
-        // TODO Move to configuration validator
-        if (!config) {
-            throw new Error(`Missing 'input' in profile, all files are excluded by default`)
-        }
-        else if (!config.include && !config.exclude) {
-            throw new Error(`Missing 'input.include' or 'input.exclude' in profile, all files are excluded by default`)
-        }
-
-        this.config = config
+        this.profile = profile
 
         // Add default filters
         this.filters.push(
-            new ExcludeListFilter(config),
-            new ExtensionFilter(config),
+            new ExcludeListFilter(profile.output),
+            new ExtensionFilter(profile.input),
             new FFProbeFilter()
         )
 
@@ -139,70 +129,3 @@ export class Watcher extends EventEmitter {
         return await Promise.all(this.filters.map(f => f.test(file))).then(results => results.every(value => value))
     }
 }
-
-// region Filters
-
-interface AsyncFileFilter {
-
-    test(file: string): Promise<boolean>
-}
-
-/**
- * File has already been processed (registered in 'exclude.list')
- */
-class ExcludeListFilter implements AsyncFileFilter {
-
-    private readonly directory: string
-
-    constructor(config: InputConfig) {
-        this.directory = config.directory
-    }
-
-    async test(file: string): Promise<boolean> {
-        const excludeListPath = path.resolve(this.directory, 'exclude.list')
-
-        return fs.stat(excludeListPath)
-            .then(stat => {
-                if (!stat) { // 'exclude.list' does not exist
-                    return true
-                }
-
-                let lines = fs.readFileSync(excludeListPath, {encoding: 'utf-8'}).split('\n')
-                return !lines.filter(l => l === path.relative(this.directory, file))
-            })
-            .catch(() => true)
-    }
-}
-
-/**
- * File extension is excluded in profile (input.include | input.exclude).
- */
-class ExtensionFilter implements AsyncFileFilter {
-
-    private readonly include: RegExp
-    private readonly exclude: RegExp
-
-    constructor(config: InputConfig) {
-        this.include = config.include
-        this.exclude = config.exclude
-    }
-
-    async test(file: string): Promise<boolean> {
-        return new Promise<boolean>(resolve => {
-            const extension = path.parse(file).ext.replace(/^\./, '')
-            return resolve(this.include && !!extension.match(`^(?:${this.include})$`) || this.exclude && !extension.match(`^(?:${this.exclude})$`))
-        })
-    }
-}
-
-/**
- * File cannot be read by ffprobe.
- */
-class FFProbeFilter implements AsyncFileFilter {
-
-    async test(file: string): Promise<boolean> {
-        return new Promise<boolean>(resolve => ffprobe(file, ['-show_chapters'], (err, data) => resolve(!err && data && !isNaN(data.format.duration))))
-    }
-}
-
-// endregion
