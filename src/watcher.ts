@@ -28,7 +28,7 @@ export class Watcher extends EventEmitter {
             throw new Error(`Missing 'input' in profile, all files are excluded by default`)
         }
         else if (!config.include && !config.exclude) {
-            throw new Error(`Missing 'input.includes' or 'input.excludes' in profile, all files are excluded by default`)
+            throw new Error(`Missing 'input.include' or 'input.exclude' in profile, all files are excluded by default`)
         }
 
         this.config = config
@@ -159,15 +159,15 @@ class ExcludeListFilter implements AsyncFileFilter {
     }
 
     async test(file: string): Promise<boolean> {
-        const excludesListPath = path.resolve(this.directory, 'exclude.list')
+        const excludeListPath = path.resolve(this.directory, 'exclude.list')
 
-        return fs.stat(excludesListPath)
+        return fs.stat(excludeListPath)
             .then(stat => {
-                if (!stat) { // 'excludes.list' does not exist
+                if (!stat) { // 'exclude.list' does not exist
                     return true
                 }
 
-                let lines = fs.readFileSync(excludesListPath, {encoding: 'utf-8'}).split('\n')
+                let lines = fs.readFileSync(excludeListPath, {encoding: 'utf-8'}).split('\n')
                 return !lines.filter(l => l === path.relative(this.directory, file))
             })
             .catch(() => true)

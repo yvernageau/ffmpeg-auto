@@ -7,6 +7,14 @@ export type Path = {
     extension: string
 }
 
+export function resolvePath(p: Path, basedir: string) {
+    return path.format({
+        dir: path.resolve(basedir, p.parent),
+        name: p.filename,
+        ext: `.${p.extension}`
+    })
+}
+
 export class Media {
     readonly id: number = 0
     path: Path
@@ -17,11 +25,7 @@ export class Media {
     }
 
     resolvePath(basedir: string): string {
-        return path.format({
-            dir: path.resolve(basedir, this.path.parent),
-            name: this.path.filename,
-            ext: `.${this.path.extension}`
-        })
+        return resolvePath(this.path, basedir)
     }
 }
 

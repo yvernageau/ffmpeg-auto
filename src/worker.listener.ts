@@ -5,7 +5,7 @@ import * as path from 'path'
 import * as winston from 'winston'
 import {format} from 'winston'
 import {LoggerFactory} from './logger'
-import {InputStream} from './media'
+import {InputStream, resolvePath} from './media'
 import {Worker} from './worker'
 
 const logger = LoggerFactory.get('worker')
@@ -67,21 +67,27 @@ export class LoggingWorkerListener extends WorkerListener {
     }
 
     private writeLogFile(level: string, lines: string[]): string {
-        const directory = this.worker.profile.output.directory
-        const filename = `${this.worker.input.path.filename}.${moment().format('YYYYMMDD-HHmmssSSS')}.log`
+        const fileLogPath: string = resolvePath(
+            {
+                parent: this.worker.input.path.parent,
+                filename: `${this.worker.input.path.filename}.${moment().format('YYYYMMDD-HHmmssSSS')}`,
+                extension: 'log'
+            },
+            this.worker.profile.output.directory
+        )
 
         const fileLogger = winston.createLogger({
             format: format.simple(),
             level: 'info',
             transports: new winston.transports.File({
-                dirname: directory,
-                filename: filename,
+                dirname: path.dirname(fileLogPath),
+                filename: path.basename(fileLogPath),
             })
         })
 
         lines.forEach(l => fileLogger.log(level, l))
 
-        return path.resolve(directory, filename)
+        return fileLogPath
     }
 }
 
@@ -192,11 +198,11 @@ export class PostWorkerListener extends WorkerListener {
 
         // Register the created files in 'exclude.list'
         const inputFile = this.worker.input.resolvePath(this.worker.profile.input.directory)
-        this.register(inputFile).catch(reason => {
-            // TODO Save the filename and retry later
-            logger.warn("Failed to write in the exclude.list: %s", reason)
-            logger.warn("Requires to be append manually: '%s'", inputFile)
-        })
+        this.register(inputFile).catch(reason => logger.warn("Failed to write '%s' in the exclude.list: %s", inputFile, reason))
+
+        if (this.worker.profile.input.remove) {
+            fs.unlink(inputFile).catch(reason => logger.warn("Failed to delete '%s': %s", inputFile, reason))
+        }
     }
 
     onFailed() {

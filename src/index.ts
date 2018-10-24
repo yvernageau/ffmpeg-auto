@@ -24,14 +24,14 @@ const args = yargs
     })
     .option('o', {
         alias: 'output',
-        desc: 'The outputFilename directory',
+        desc: 'The output directory',
         demandOption: true,
         type: 'string',
         nargs: 1
     })
     .option('p', {
         alias: 'profile',
-        desc: '',
+        desc: 'The execution profile to apply for each input file',
         demandOption: true,
         type: 'string',
         nargs: 1
@@ -42,8 +42,14 @@ const args = yargs
         type: 'boolean',
         default: false
     })
+    .option('r', {
+        alias: 'remove',
+        desc: 'Remove the input files after a successful execution. WARNING: Ensure your profile works as expected before',
+        type: 'boolean',
+        default: false
+    })
     .option('debug', {
-        desc: 'Debug',
+        desc: 'Display debug information',
         type: 'boolean',
         default: false
     })
@@ -51,6 +57,7 @@ const args = yargs
 
 const profile: Profile = Profile.load(args.profile)
 profile.input.directory = args.input
+profile.input.remove = args.remove
 profile.output.directory = args.output
 
 LoggerFactory.debug = args.debug
@@ -59,6 +66,7 @@ logger.info('profile = %s', args.profile)
 logger.info('input   = %s', args.input)
 logger.info('output  = %s', args.output)
 logger.info('watch   = %s', args.watch)
+logger.info('remove  = %s', args.remove)
 logger.info('debug   = %s', args.debug)
 
 // TODO Validate profile

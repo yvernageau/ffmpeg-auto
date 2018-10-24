@@ -27,6 +27,8 @@ export class InputConfig extends IOConfig {
     exclude?: RegExp
 
     params?: Snippets = []
+
+    remove: boolean
 }
 
 // TODO Support for filters (filter_complex)
