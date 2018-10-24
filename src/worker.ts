@@ -46,17 +46,6 @@ export class Worker extends EventEmitter {
         new PostWorkerListener(this)
     }
 
-    private static createDirectories(outputPath: string) {
-        // Create missing directories
-        fs.mkdirpSync(path.dirname(outputPath))
-
-        // Set owner (if defined)
-        if (process.env.UID && process.env.GID) {
-            // TODO Set owner of parent directories if necessary
-            fs.chownSync(path.dirname(outputPath), parseInt(process.env.UID), parseInt(process.env.GID))
-        }
-    }
-
     async execute() {
         if (this.locked) {
             return Promise.reject('This execution has already been done')
@@ -101,7 +90,7 @@ export class Worker extends EventEmitter {
 
                 // Create missing directories and set owner
                 const outputPath = o.resolvePath(this.profile.output.directory)
-                Worker.createDirectories(outputPath)
+                this.createDirectories(outputPath)
 
                 logger.debug('output:%d = %s', o.id, outputPath)
                 logger.debug('output:%d.options = %s', o.id, outputOptions.join(' '))
@@ -137,5 +126,27 @@ export class Worker extends EventEmitter {
 
             command.run()
         })
+    }
+
+    private createDirectories(outputPath: string, baseDirectory: string = this.profile.output.directory) {
+        // Create missing directories
+        fs.mkdirpSync(path.dirname(outputPath))
+
+        // Set owner (if defined)
+        if (process.env.UID && process.env.GID) {
+            const uid = parseInt(process.env.UID)
+            const gid = parseInt(process.env.GID)
+
+            const parentDirectory = baseDirectory.replace(`${path.sep}$`, '') // Remove the tailing separator
+            let currentDirectory = path.dirname(outputPath)
+            while (currentDirectory !== parentDirectory) {
+                const stat = fs.statSync(currentDirectory)
+                if (stat.uid !== uid || stat.gid !== gid) { // Ensure the owner is not already defined
+                    logger.debug("Set owner (%d:%d) of '%s'", uid, gid, currentDirectory)
+                    fs.chownSync(currentDirectory, uid, gid)
+                }
+                currentDirectory = path.dirname(currentDirectory)
+            }
+        }
     }
 }
