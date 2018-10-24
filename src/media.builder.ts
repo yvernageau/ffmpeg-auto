@@ -1,19 +1,20 @@
-import * as path from 'path'
 import {LoggerFactory} from './logger'
 import {Chapter, OutputMedia} from './media'
 import {Mapping, Option} from './profile'
 import {DefaultSnippetResolver, parsePredicate, SnippetContext, SnippetResolver} from './snippet'
 
-const logger = LoggerFactory.createDefault('builder')
+const logger = LoggerFactory.get('builder')
 
 function resolveParameters(o: OutputMedia, context: SnippetContext): OutputMedia {
     const resolver: SnippetResolver = new DefaultSnippetResolver()
 
+    // Resolve general parameters
     o.params = o.params.map(p => resolver.resolve(p, {
         ...context,
         output: o
     }))
 
+    // Resolve stream-dependent parameters
     o.streams.forEach(os => {
         os.params = os.params.map(p => resolver.resolve(p, {
             ...context,
@@ -26,11 +27,11 @@ function resolveParameters(o: OutputMedia, context: SnippetContext): OutputMedia
     return o
 }
 
-export class MediaBuilder {
+export class OutputMediaBuilder {
 
-    private static createBuilder(mapping: Mapping) {
+    private static getBuilder(mapping: Mapping) {
         if (!mapping.on || mapping.on === 'none') { // [default|none]
-            return new DefaultMappingBuilder(mapping)
+            return new SingleMappingBuilder(mapping)
         }
         else if (mapping.on && mapping.on === 'chapters') { // chapters
             return new ChapterMappingBuilder(mapping)
@@ -52,7 +53,7 @@ export class MediaBuilder {
         let outputsCount = 0
         return context.profile.output.mappings
             .filter(m => !m.skip)
-            .map(m => MediaBuilder.createBuilder(m))
+            .map(m => OutputMediaBuilder.getBuilder(m))
             .map(b => {
                 let output = b.build(context, outputsCount)
                 outputsCount += output.length
@@ -73,15 +74,17 @@ abstract class MappingBuilder {
     abstract build(context: SnippetContext, outputsCount: number): OutputMedia[]
 }
 
-class DefaultMappingBuilder extends MappingBuilder {
+class SingleMappingBuilder extends MappingBuilder {
 
     constructor(mapping: Mapping) {
         super(mapping)
     }
 
     build(context: SnippetContext, outputsCount: number): OutputMedia[] {
+        logger.info('Building [%s] ...', this.mapping.id)
+
         if (this.mapping.when && !parsePredicate(this.mapping.when)(context)) {
-            logger.log("[%s] 'when' directive does not match the current context", this.mapping.id)
+            logger.warn("> 'when' directive does not match the current context")
             return []
         }
 
@@ -144,7 +147,7 @@ class DefaultMappingBuilder extends MappingBuilder {
 
         // Resolve path
         output.path = {
-            parent: path.resolve(context.profile.output.directory, path.relative(context.profile.input.directory, context.input.path.parent)),
+            parent: context.input.path.parent,
             filename: resolver.resolve(this.mapping.output, localContext),
             extension: this.mapping.format ? this.mapping.format : context.profile.output.defaultExtension
         }
@@ -161,11 +164,13 @@ class ChapterMappingBuilder extends MappingBuilder {
     }
 
     build(context: SnippetContext, outputsCount: number): OutputMedia[] {
+        logger.info('Building [%s] ...', this.mapping.id)
+
         let chaptersCount = 1
         let chapters: Chapter[] = context.input.chapters
 
         if (!chapters || chapters.length === 0) {
-            logger.warn("[%s] No chapter", this.mapping.id)
+            logger.warn("> No chapter")
             return []
         }
 
@@ -196,7 +201,7 @@ class ChapterMappingBuilder extends MappingBuilder {
                 }
             })
             .map(localContext => {
-                let output: OutputMedia[] = new DefaultMappingBuilder(this.mapping).build(localContext, outputsCount)
+                let output: OutputMedia[] = new SingleMappingBuilder(this.mapping).build(localContext, outputsCount)
                 outputsCount += output.length
 
                 output.forEach(o => resolveParameters(o, localContext))
@@ -214,8 +219,10 @@ class ManyMappingBuilder extends MappingBuilder {
     }
 
     build(context: SnippetContext, outputsCount: number): OutputMedia[] {
+        logger.info('Building [%s] ...', this.mapping.id)
+
         if (this.mapping.options) {
-            logger.warn("[%s] 'options' are disabled when `on != 'none'`", this.mapping.id)
+            logger.warn("> 'options' are disabled when `on != 'none'`")
         }
 
         const resolver: SnippetResolver = new DefaultSnippetResolver()
@@ -235,7 +242,7 @@ class ManyMappingBuilder extends MappingBuilder {
 
                 // Resolve path
                 output.path = {
-                    parent: path.resolve(context.profile.output.directory, path.relative(context.profile.input.directory, context.input.path.parent)),
+                    parent: context.input.path.parent,
                     filename: resolver.resolve(this.mapping.output, {...context, output: output, stream: s}),
                     extension: this.mapping.format ? this.mapping.format : resolveExtension(s.codec_name),
                 }
@@ -252,16 +259,16 @@ function resolveExtension(codecName: string): string {
     if (possibleExtensions && possibleExtensions.length > 0) {
         if (possibleExtensions.length === 1) {
             extension = possibleExtensions[0].extension
-            logger.verbose("Using extension '%s' for codec '%'", extension, codecName)
+            logger.verbose("> Using extension '%s' for codec '%'", extension, codecName)
         }
         else {
             extension = possibleExtensions[0].extension
-            logger.warn("Several occurences match the codec '%s': [%s], using '%s'", codecName, possibleExtensions.map(ec => ec.codecName + '=' + ec.extension), extension)
+            logger.warn("> Several occurences match the codec '%s': [%s], using '%s'", codecName, possibleExtensions.map(ec => ec.codecName + '=' + ec.extension), extension)
         }
     }
     else {
         extension = codecName
-        logger.debug("Unable to find the extension for codec '%s', using '%s'", codecName, extension)
+        logger.debug("> Unable to find the extension for codec '%s', using '%s'", codecName, extension)
     }
 
     return extension
@@ -272,6 +279,7 @@ type CodecExtension = {
     extension: string
 }
 
+// TODO Complete this list
 const extensionsByCodec: CodecExtension[] = [
     {codecName: /subrip/, extension: 'srt'}
 ]

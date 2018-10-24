@@ -1,27 +1,28 @@
 import {FSWatcher} from 'chokidar'
+import {EventEmitter} from 'events'
 import {ffprobe} from 'fluent-ffmpeg'
 import * as fs from 'fs-extra'
 import * as path from 'path'
 import {LoggerFactory} from './logger'
-import {InputMedia} from './media'
 import {InputConfig} from './profile'
 
-const logger = LoggerFactory.createDefault('watcher')
+const logger = LoggerFactory.get('watcher')
 
-export type WatcherCallback = (input: InputMedia) => void
+export class Watcher extends EventEmitter {
 
-export class Watcher {
+    private static readonly TIMEOUT = 60 * 1000
+
+    private readonly config: InputConfig
+
+    private readonly watcher: FSWatcher
+    private readonly filters: AsyncFileFilter[] = []
 
     private pendingTimer: any
     private pendingFiles: string[] = []
 
-    private readonly config: InputConfig
-    private readonly callback: WatcherCallback
+    constructor(config: InputConfig, watch: boolean) {
+        super()
 
-    private readonly watcher: FSWatcher
-    private readonly filters: FileFilter[] = []
-
-    constructor(config: InputConfig, watch: boolean, callback: WatcherCallback) {
         // TODO Move to configuration validator
         if (!config) {
             throw new Error(`Missing 'input' in profile, all files are excluded by default`)
@@ -31,8 +32,15 @@ export class Watcher {
         }
 
         this.config = config
-        this.callback = callback
 
+        // Add default filters
+        this.filters.push(
+            new ExcludeListFilter(config),
+            new ExtensionFilter(config),
+            new FFProbeFilter()
+        )
+
+        // Initialize the directory watcher
         this.watcher = new FSWatcher(
             {
                 awaitWriteFinish: true,
@@ -40,16 +48,11 @@ export class Watcher {
                 ignorePermissionErrors: true,
                 persistent: watch
             })
-            .on('add', path => this.onAdd(path))
-            .on('unlink', path => this.onRemove(path))
-            .on('change', path => this.onChange(path))
+            .on('add', file => this.onAdd(file))
+            .on('unlink', file => this.onRemove(file))
+            .on('change', file => this.onChange(file))
 
         process.on('exit', () => this.watcher.close())
-
-        this.filters.push(
-            new ExcludeListFilter(config),
-            new ExtensionFilter(config)
-        )
     }
 
     watch(directory: string) {
@@ -63,84 +66,91 @@ export class Watcher {
 
     private onAdd(file: string) {
         this.pendingFiles.push(file)
-        logger.debug("Added '%s' ...")
-        this.restartTimer()
+        logger.debug("ADD   : '%s'", file)
+        this.updateTimeout()
     }
 
     private onRemove(file: string) {
         const index = this.pendingFiles.indexOf(file)
         if (index > -1) {
             this.pendingFiles.splice(index)
-            logger.debug("Removed '%s' ...")
-            this.restartTimer()
+            logger.debug("REMOVE: '%s'", file)
+            this.updateTimeout()
         }
+        this.emit('cancel', file)
     }
 
     private onChange(file: string) {
-        this.restartTimer()
+        const index = this.pendingFiles.indexOf(file)
+        if (index > -1) {
+            logger.debug("CHANGE: '%s'", file)
+            this.updateTimeout()
+        }
     }
 
-    private restartTimer() {
+    /**
+     * Updates the timeout before sending notifications for new files.
+     */
+    private updateTimeout(timeout: number = Watcher.TIMEOUT) {
         if (this.pendingTimer) {
             clearTimeout(this.pendingTimer)
         }
-        this.pendingTimer = setTimeout(() => this.notifyPendingFiles(), 60000)
+
+        if (this.pendingFiles.length > 0) {
+            this.pendingTimer = setTimeout(() => this.notify(), timeout)
+            logger.debug('Waiting %d seconds for stabilization ...', timeout / 1000)
+        }
     }
 
-    private async notifyPendingFiles() {
-        // TODO Regroups external resources (same base name) and includes them as input (subtitles + audio -> container)
-        const sortedFiles = this.pendingFiles.sort()
-        for (let file of sortedFiles) {
-            await this.filterAndCreateInput(file).then(input => this.callback(input))
-        }
-
-        // Clear the pending files and timer
+    /**
+     * Resets the pending files and timer to their initial state.
+     */
+    private reset() {
         this.pendingFiles = []
 
         clearTimeout(this.pendingTimer)
         this.pendingTimer = undefined
     }
 
-    private async filterAndCreateInput(file: string): Promise<InputMedia> {
-        return new Promise<InputMedia>((resolve, reject) => {
-            const failedFilters = this.filters.filter(f => !f.test(file))
-            if (failedFilters && failedFilters.length > 0) {
-                return reject(failedFilters[0].reason()) // Only describe the first
-            }
+    /**
+     * Notifies all listeners.
+     */
+    private async notify() {
+        // TODO Regroups external resources (same base name) and includes them as input (subtitles + audio -> container)
+        const sortedFiles = this.pendingFiles.sort()
 
-            ffprobe(file, ['-show_chapters'], (err, data) => {
-                if (!err && data && !isNaN(data.format.duration)) {
-                    let filepath = path.parse(file)
+        for (let file of sortedFiles) {
+            await this.filter(file)
+                .then(included => {
+                    if (included) {
+                        this.emit('schedule', file)
+                    }
+                    else {
+                        logger.debug("IGNORE: '%s'", file)
+                    }
+                })
+                .catch(reason => logger.warn("IGNORE: '%s': %s", file, reason))
+        }
 
-                    return resolve(new InputMedia(
-                        0,
-                        {
-                            parent: filepath.dir,
-                            filename: filepath.name,
-                            extension: filepath.ext.replace(/^\./, '')
-                        },
-                        data
-                    ))
-                }
-                else if (err) {
-                    return reject(err.message)
-                }
-                else {
-                    return reject('File is not a media')
-                }
-            })
-        })
+        this.reset()
+    }
+
+    private async filter(file: string): Promise<boolean> {
+        return await Promise.all(this.filters.map(f => f.test(file))).then(results => results.every(value => value))
     }
 }
 
-interface FileFilter {
+// region Filters
 
-    reason(): string
+interface AsyncFileFilter {
 
-    test(file: string): boolean
+    test(file: string): Promise<boolean>
 }
 
-class ExcludeListFilter implements FileFilter {
+/**
+ * File has already been processed (registered in 'exclude.list')
+ */
+class ExcludeListFilter implements AsyncFileFilter {
 
     private readonly directory: string
 
@@ -148,35 +158,26 @@ class ExcludeListFilter implements FileFilter {
         this.directory = config.directory
     }
 
-    reason(): string {
-        return "File has already been processed (registered in 'excludes.list')"
-    }
+    async test(file: string): Promise<boolean> {
+        const excludesListPath = path.resolve(this.directory, 'exclude.list')
 
-    test(file: string): boolean {
-        const excludesListPath = path.resolve(this.directory, 'excludes.list')
+        return fs.stat(excludesListPath)
+            .then(stat => {
+                if (!stat) { // 'excludes.list' does not exist
+                    return true
+                }
 
-        // Excluded by default
-        let included: boolean = false
-
-        try {
-            const stats = fs.statSync(excludesListPath)
-            if (!stats) { // Excludes list does not exist
-                included = true
-            }
-            else {
                 let lines = fs.readFileSync(excludesListPath, {encoding: 'utf-8'}).split('\n')
-                included = !lines.filter(l => l === path.relative(this.directory, file))
-            }
-        }
-        catch (e) {
-            included = true
-        }
-
-        return included
+                return !lines.filter(l => l === path.relative(this.directory, file))
+            })
+            .catch(() => true)
     }
 }
 
-class ExtensionFilter implements FileFilter {
+/**
+ * File extension is excluded in profile (input.include | input.exclude).
+ */
+class ExtensionFilter implements AsyncFileFilter {
 
     private readonly include: RegExp
     private readonly exclude: RegExp
@@ -186,24 +187,22 @@ class ExtensionFilter implements FileFilter {
         this.exclude = config.exclude
     }
 
-    reason(): string {
-        return "File extension is excluded in profile (input.include | input.exclude)"
-    }
-
-    test(file: string): boolean {
-        const extension = path.parse(file).ext.replace(/^\./, '')
-
-        // Excluded by default
-        let included: boolean = false
-
-        if (this.include) {
-            included = !!extension.match(new RegExp(`^(?:${this.include})$`))
-        }
-
-        if (this.exclude) {
-            included = !extension.match(new RegExp(`^(?:${this.exclude})$`))
-        }
-
-        return included
+    async test(file: string): Promise<boolean> {
+        return new Promise<boolean>(resolve => {
+            const extension = path.parse(file).ext.replace(/^\./, '')
+            return resolve(this.include && !!extension.match(`^(?:${this.include})$`) || this.exclude && !extension.match(`^(?:${this.exclude})$`))
+        })
     }
 }
+
+/**
+ * File cannot be read by ffprobe.
+ */
+class FFProbeFilter implements AsyncFileFilter {
+
+    async test(file: string): Promise<boolean> {
+        return new Promise<boolean>(resolve => ffprobe(file, ['-show_chapters'], (err, data) => resolve(!err && data && !isNaN(data.format.duration))))
+    }
+}
+
+// endregion

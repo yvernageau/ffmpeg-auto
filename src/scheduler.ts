@@ -1,72 +1,75 @@
 import * as Queue from 'better-queue'
-import {ProcessFunctionCb} from 'better-queue'
-import * as fs from 'fs-extra'
 import {LoggerFactory} from './logger'
-import {InputMedia} from './media'
 import {Profile} from './profile'
-import {Worker} from './worker'
 
-const logger = LoggerFactory.createDefault('scheduler')
+const logger = LoggerFactory.get('scheduler')
 
 export class Scheduler {
 
     private readonly profile: Profile
 
     private readonly queue: Queue
-    private queueCount: number = 0
 
-    constructor(profile: Profile) {
+    private readonly tasks: Map<number, string> = new Map<number, string>()
+    private taskCount: number = 0
+
+    constructor(profile: Profile, onProcess: Queue.ProcessFunction<any, never>) {
         this.profile = profile
 
         this.queue = new Queue(
             {
-                id: ((input, callback) => callback(null, this.generateId(input))),
-                process: (input, callback) => this.process(input, callback)
+                id: ((file, callback) => callback(null, this.createId(file))),
+                process: onProcess,
+                afterProcessDelay: 10 * 1000 // Waiting 10 seconds
             })
-            .on('task_queued', (id, input) => this.onQueued(id, input))
-            .on('task_started', id => this.onStart(id))
-            .on('task_finish', id => this.onEnd(id))
-            .on('task_failed', (id, message) => this.onFailure(id, message))
-            .on('error', (id, error) => this.onError(id, error))
+            .on('task_queued', (id, arg) => {
+                logger.info('#%s - Scheduled: %s', id, arg)
+            })
+            .on('task_started', id => {
+                logger.info('#%s - Started', id)
+            })
+            .on('task_finish', id => {
+                logger.info('#%s - Done', id)
+                this.tasks.delete(id)
+            })
+            .on('task_failed', (id, message) => {
+                logger.error('#%s - Failed: %s', id, message)
+                this.tasks.delete(id)
+            })
+            .on('error', (id, error) => {
+                logger.error('#%s - %s', id, error)
+            })
 
         process.on('exit', () => this.queue.destroy(() => {
         }))
     }
 
-    schedule(input: InputMedia) {
-        this.queue.push(input)
+    schedule(file: string) {
+        this.queue.push(file)
     }
 
-    private generateId(input: InputMedia) {
-        return `#${++this.queueCount}`
+    cancel(file: string) {
+        let id = this.findId(file)
+        if (id > 0) {
+            this.queue.cancel(id, () => {
+                logger.info('#%s - Cancelled', id)
+            })
+            this.tasks.delete(id)
+        }
     }
 
-    private process(input: InputMedia, callback: ProcessFunctionCb<never>) {
-        fs.stat(input.resolvePath())
-            .then((() => new Worker(this.profile, input).execute()
-                    .catch(reason => callback(reason))
-                    .then(() => callback(null))
-            ))
-            .catch(reason => callback(reason))
+    private createId(file: string) {
+        const id = ++this.taskCount
+        this.tasks.set(id, file)
+        return id
     }
 
-    private onQueued(id: string, input: InputMedia) {
-        logger.info('%s - Scheduled: %s', id, input.resolvePath())
-    }
-
-    private onStart(id: string) {
-        logger.info('%s - Started', id)
-    }
-
-    private onEnd(id: string) {
-        logger.info('%s - Done', id)
-    }
-
-    private onFailure(id: string, message: string) {
-        logger.error('%s - Failed: %s', id, message)
-    }
-
-    private onError(id: string, error: any) {
-        logger.error('%s - %s', id, error)
+    private findId(file: string) {
+        for (let [k, v] of this.tasks.entries()) {
+            if (v === file) {
+                return k
+            }
+        }
+        return 0
     }
 }

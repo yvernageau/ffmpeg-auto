@@ -16,8 +16,12 @@ export class Media {
         this.path = path
     }
 
-    resolvePath(): string {
-        return path.resolve(this.path.parent, this.path.filename + '.' + this.path.extension)
+    resolvePath(basedir: string): string {
+        return path.format({
+            dir: path.resolve(basedir, this.path.parent),
+            name: this.path.filename,
+            ext: `.${this.path.extension}`
+        })
     }
 }
 
