@@ -40,7 +40,6 @@ export class Watcher extends EventEmitter {
             })
             .on('add', file => this.onAdd(file))
             .on('unlink', file => this.onRemove(file))
-            .on('change', file => this.onChange(file))
 
         process.on('exit', () => this.watcher.close())
     }
@@ -56,7 +55,7 @@ export class Watcher extends EventEmitter {
 
     private onAdd(file: string) {
         this.pendingFiles.push(file)
-        logger.debug("ADD   : '%s'", file)
+        logger.debug("+ '%s'", file)
         this.updateTimeout()
     }
 
@@ -64,18 +63,10 @@ export class Watcher extends EventEmitter {
         const index = this.pendingFiles.indexOf(file)
         if (index > -1) {
             this.pendingFiles.splice(index)
-            logger.debug("REMOVE: '%s'", file)
+            logger.debug("- '%s'", file)
             this.updateTimeout()
         }
-        this.emit('cancel', file)
-    }
-
-    private onChange(file: string) {
-        const index = this.pendingFiles.indexOf(file)
-        if (index > -1) {
-            logger.debug("CHANGE: '%s'", file)
-            this.updateTimeout()
-        }
+        this.emit('remove', file)
     }
 
     /**
@@ -113,13 +104,13 @@ export class Watcher extends EventEmitter {
             await this.filter(file)
                 .then(included => {
                     if (included) {
-                        this.emit('schedule', file)
+                        this.emit('add', file)
                     }
                     else {
-                        logger.debug("IGNORE: '%s'", file)
+                        logger.debug("X '%s'", file)
                     }
                 })
-                .catch(reason => logger.warn("IGNORE: '%s': %s", file, reason))
+                .catch(reason => logger.debug("X '%s': %s", file, reason))
         }
 
         this.reset()

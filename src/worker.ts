@@ -5,20 +5,16 @@ import 'moment-duration-format'
 import * as path from 'path'
 import {LoggerFactory} from './logger'
 import {InputMedia, OutputMedia} from './media'
-import {OutputMediaBuilder} from './media.builder'
 import {Profile} from './profile'
 import {DefaultSnippetResolver} from './snippet'
 import {LoggingWorkerListener, PostWorkerListeners, ProgressWorkerListener} from './worker.listener'
 
 const logger = LoggerFactory.get('worker')
 
-type FFMpegProgress = {
-    frames: number,
-    currentFps: number,
-    currentKbps: number,
-    targetSize: number,
-    timemark: number,
-    percent: number
+export type WorkerContext = {
+    profile: Profile
+    input: InputMedia
+    outputs: OutputMedia[]
 }
 
 export class Worker extends EventEmitter {
@@ -29,16 +25,12 @@ export class Worker extends EventEmitter {
 
     private locked: boolean
 
-    constructor(profile: Profile, input: InputMedia) {
+    constructor(context: WorkerContext) {
         super()
 
-        this.profile = profile
-        this.input = input
-
-        this.outputs = new OutputMediaBuilder().build({
-            profile: this.profile,
-            input: this.input
-        })
+        this.profile = context.profile
+        this.input = context.input
+        this.outputs = context.outputs
 
         // Register the default listeners
         new LoggingWorkerListener(this)
@@ -104,10 +96,10 @@ export class Worker extends EventEmitter {
 
             // Configure events
             command
-                .on('start', (commandLine: string) => {
+                .on('start', commandLine => {
                     this.emit('start', commandLine)
                 })
-                .on('progress', (progress: FFMpegProgress) => {
+                .on('progress', progress => {
                     this.emit('progress', progress)
                 })
                 .on('stderr', (line: string) => {

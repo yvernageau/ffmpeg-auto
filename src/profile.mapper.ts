@@ -1,70 +1,99 @@
+import {ffprobe} from 'fluent-ffmpeg'
+import * as fs from 'fs-extra'
+import * as path from "path"
 import {LoggerFactory} from './logger'
-import {Chapter, OutputMedia} from './media'
-import {Mapping, Option} from './profile'
+import {Chapter, InputMedia, OutputMedia} from './media'
+import {Mapping, Option, Profile} from './profile'
 import {DefaultSnippetResolver, parsePredicate, SnippetContext, SnippetResolver} from './snippet'
+import {WorkerContext} from './worker'
 
 const logger = LoggerFactory.get('builder')
 
-function resolveParameters(o: OutputMedia, context: SnippetContext): OutputMedia {
-    const resolver: SnippetResolver = new DefaultSnippetResolver()
+export class ProfileMapper {
 
-    // Resolve general parameters
-    o.params = o.params.map(p => resolver.resolve(p, {
-        ...context,
-        output: o
-    }))
+    private readonly profile: Profile
 
-    // Resolve stream-dependent parameters
-    o.streams.forEach(os => {
-        os.params = os.params.map(p => resolver.resolve(p, {
-            ...context,
-            output: o,
-            stream: os.source,
-            outputStream: os
-        }))
-    })
-
-    return o
-}
-
-export class OutputMediaBuilder {
-
-    private static getBuilder(mapping: Mapping) {
-        if (!mapping.on || mapping.on === 'none') { // [default|none]
-            return new SingleMappingBuilder(mapping)
-        }
-        else if (mapping.on && mapping.on === 'chapters') { // chapters
-            return new ChapterMappingBuilder(mapping)
-        }
-        else { // [all|video|audio|subtitle]+
-            return new ManyMappingBuilder(mapping)
-        }
+    constructor(profile: Profile) {
+        this.profile = profile
     }
 
-    build(context: SnippetContext): OutputMedia[] {
-        if (!context.profile.output.mappings) {
+    async apply(inputFile: string): Promise<WorkerContext> {
+        return new Promise<WorkerContext>((resolve, reject) => {
+            new InputMediaBuilder().build(this.profile, inputFile)
+                .then(input => {
+                    resolve({
+                        profile: this.profile,
+                        input: input,
+                        outputs: new OutputMediaBuilder().build(this.profile, input)
+                    })
+                })
+                .catch(reason => reject(reason))
+        })
+    }
+}
+
+class InputMediaBuilder {
+
+    async build(profile: Profile, inputFile: string) {
+        return fs.stat(inputFile) // Ensure the file still exists
+            .then(() => new Promise<InputMedia>((resolve, reject) => {
+                ffprobe(inputFile, (err, data) => {
+                    if (err) {
+                        return reject(err.message)
+                    }
+
+                    const filepath = path.parse(inputFile)
+
+                    resolve(new InputMedia(0, {
+                        parent: path.relative(profile.input.directory, filepath.dir),
+                        filename: filepath.name,
+                        extension: filepath.ext.replace(/^\./, '')
+                    }, data))
+                })
+            }))
+    }
+}
+
+class OutputMediaBuilder {
+
+    // TODO Make it async
+    build(profile: Profile, input: InputMedia): OutputMedia[] {
+        if (!profile.output.mappings) {
             throw new Error('No task defined')
         }
 
-        if (context.profile.output.mappings.filter(tm => !tm.skip).some(tm => !tm.output)) {
+        if (profile.output.mappings.filter(tm => !tm.skip).some(tm => !tm.output)) {
             throw new Error("An output must be defined for each 'mappings'")
         }
 
         let outputsCount = 0
-        return context.profile.output.mappings
+        return profile.output.mappings
             .filter(m => !m.skip)
-            .map(m => OutputMediaBuilder.getBuilder(m))
+            .map(m => getMappingBuilder(m))
             .map(b => {
-                let output = b.build(context, outputsCount)
+                let output = b.build({profile: profile, input: input}, outputsCount)
                 outputsCount += output.length
                 return output
             })
             .reduce((a, b) => a.concat(...b), [])
-            .map(o => resolveParameters(o, context))
+            .map(o => resolveParameters(o, {profile: profile, input: input}))
+    }
+}
+
+function getMappingBuilder(mapping: Mapping) {
+    if (!mapping.on || mapping.on === 'none') { // [default|none]
+        return new SingleMappingBuilder(mapping)
+    }
+    else if (mapping.on && mapping.on === 'chapters') { // chapters
+        return new ChapterMappingBuilder(mapping)
+    }
+    else { // [all|video|audio|subtitle]+
+        return new ManyMappingBuilder(mapping)
     }
 }
 
 abstract class MappingBuilder {
+
     protected readonly mapping: Mapping
 
     protected constructor(mapping: Mapping) {
@@ -250,6 +279,28 @@ class ManyMappingBuilder extends MappingBuilder {
                 return output
             })
     }
+}
+
+function resolveParameters(o: OutputMedia, context: SnippetContext): OutputMedia {
+    const resolver: SnippetResolver = new DefaultSnippetResolver()
+
+    // Resolve general parameters
+    o.params = o.params.map(p => resolver.resolve(p, {
+        ...context,
+        output: o
+    }))
+
+    // Resolve stream-dependent parameters
+    o.streams.forEach(os => {
+        os.params = os.params.map(p => resolver.resolve(p, {
+            ...context,
+            output: o,
+            stream: os.source,
+            outputStream: os
+        }))
+    })
+
+    return o
 }
 
 function resolveExtension(codecName: string): string {

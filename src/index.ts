@@ -1,10 +1,7 @@
-import {ffprobe} from 'fluent-ffmpeg'
-import * as fs from 'fs-extra'
-import * as path from 'path'
 import * as yargs from 'yargs'
 import {LoggerFactory} from './logger'
-import {InputMedia} from './media'
 import {Profile} from './profile'
+import {ProfileMapper} from './profile.mapper'
 import {Scheduler} from './scheduler'
 import {Watcher} from './watcher'
 import {Worker} from './worker'
@@ -71,34 +68,18 @@ logger.info('debug   = %s', args.debug)
 
 // TODO Validate profile
 
+const mapper: ProfileMapper = new ProfileMapper(profile)
+
 const scheduler = new Scheduler(profile, (file, callback) => {
-    fs.stat(file) // Ensure the file still exists
-        .then(() => new Promise<InputMedia>((resolve, reject) => {
-            ffprobe(file, (err, data) => {
-                if (err) {
-                    return reject(err.message)
-                }
-
-                const filepath = path.parse(file)
-                const input = new InputMedia(0, {
-                    parent: path.relative(profile.input.directory, filepath.dir),
-                    filename: filepath.name,
-                    extension: filepath.ext.replace(/^\./, '')
-                }, data)
-
-                resolve(input)
-            })
-        }))
-        .then((input => new Worker(profile, input).execute()
-                .then(() => callback(null))
-                .catch(reason => callback(reason))
-        ))
+    mapper.apply(file)
+        .then(context => new Worker(context).execute())
+        .then(() => callback(null))
         .catch(reason => callback(reason))
 })
 
 const watcher = new Watcher(profile, args.watch)
-    .on('schedule', file => scheduler.schedule(file))
-    .on('cancel', file => scheduler.cancel(file))
+    .on('add', file => scheduler.schedule(file))
+    .on('remove', file => scheduler.cancel(file))
 
 // Add the initial directory
 watcher.watch(args.input)
