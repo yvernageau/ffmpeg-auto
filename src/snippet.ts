@@ -7,6 +7,10 @@ const logger = LoggerFactory.get('snippet')
 export type Snippet = string
 export type Snippets = Snippet | Snippet[]
 
+export function toArray(snippets: Snippets) {
+    return snippets ? Array.isArray(snippets) ? snippets : [snippets] : []
+}
+
 const REGEX: RegExp = /{((?:(?![{}]).)*)}/gi
 const REGEX_EXECUTABLE: RegExp = /{{((?:(?!{{).)*)}}/gi
 
@@ -41,7 +45,7 @@ export class DefaultSnippetResolver implements SnippetResolver {
     }
 
     resolve(snippets: Snippets, context: SnippetContext): string {
-        const snippet: string = (snippets ? Array.isArray(snippets) ? snippets : [snippets] : []).join(' ')
+        const snippet: string = toArray(snippets).join(' ')
         const result = this.resolvers.reduce((result, resolver) => resolver.resolve(result, context), snippet)
 
         logger.debug("Resolved: '%s' => '%s'", snippet, result)

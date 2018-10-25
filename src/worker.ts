@@ -6,7 +6,6 @@ import * as path from 'path'
 import {LoggerFactory} from './logger'
 import {InputMedia, OutputMedia} from './media'
 import {Profile} from './profile'
-import {DefaultSnippetResolver} from './snippet'
 import {LoggingWorkerListener, PostWorkerListeners, ProgressWorkerListener} from './worker.listener'
 
 const logger = LoggerFactory.get('worker')
@@ -49,13 +48,9 @@ export class Worker extends EventEmitter {
             let command = ffmpeg()
 
             // Configure input
-            let inputOptions: string[] = []
-            if (this.profile.input && this.profile.input.params) {
-                inputOptions = new DefaultSnippetResolver().resolve(this.profile.input.params, {
-                    profile: this.profile,
-                    input: this.input
-                }).split(/\s+/)
-            }
+            let inputOptions: string[] = this.input.params
+                .map(a => a.trim().split(/\s+/))
+                .reduce((a, b) => a.concat(...b), [])
 
             const inputPath = this.input.resolvePath(this.profile.input.directory)
 
@@ -117,6 +112,7 @@ export class Worker extends EventEmitter {
                     reject(err.message.split(/([\r\n]|\r\n)$/).map(l => l.trim()).filter(l => l).join('\n'))
                 })
 
+            // Execute command
             command.run()
         })
     }

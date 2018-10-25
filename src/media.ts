@@ -19,6 +19,8 @@ export class Media {
     readonly id: number = 0
     path: Path
 
+    params: Snippet[]
+
     constructor(id: number, path?: Path) {
         this.id = id
         this.path = path
@@ -34,8 +36,10 @@ export class InputMedia extends Media {
     readonly format: Format
     readonly chapters?: Chapter[]
 
-    constructor(id: number, path: Path, meta: any) {
+    constructor(id: number, path: Path, params: Snippet[] = [], meta: any) {
         super(id, path)
+
+        this.params = params
 
         this.streams = meta.streams
         this.format = meta.format
@@ -45,14 +49,15 @@ export class InputMedia extends Media {
 
 export class OutputMedia extends Media {
     readonly source: InputMedia
-
-    params: Snippet[]
     streams: OutputStream[]
 
     constructor(id: number, source: InputMedia, params: Snippet[] = [], streams: OutputStream[] = []) {
         super(id, undefined)
+
         this.source = source
+
         this.params = params
+
         this.streams = streams
     }
 }
