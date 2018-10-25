@@ -1,8 +1,9 @@
 {
-  "name": "media-toolchain",
+  "name": "media-pipeline",
   "version": "0.0.1",
   "author": "Yoann Vernageau",
-  "description": "",
+  "description": "A FFMpeg commander",
+  "repository": "https://github.com/yvernageau/media-pipeline",
   "license": "MIT",
   "main": "index.js",
   "scripts": {
