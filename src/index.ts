@@ -46,19 +46,31 @@ const args = yargs
     })
     .parse()
 
-const profile: Profile = Profile.load(args.profile)
-profile.input.directory = args.input
-profile.output.directory = args.output
-
-LoggerFactory.debug = args.debug
-
 logger.info('profile = %s', args.profile)
 logger.info('input   = %s', args.input)
 logger.info('output  = %s', args.output)
 logger.info('watch   = %s', args.watch)
 logger.info('debug   = %s', args.debug)
 
-// TODO Validate profile
+const profile: Profile = Profile.load(args.profile)
+profile.input.directory = args.input
+profile.output.directory = args.output
+
+LoggerFactory.debug = args.debug
+
+// region Profile validation
+
+// Remove 'mappings' and 'mapping[].options' where 'skip === true'
+profile.output.mappings = profile.output.mappings.filter(m => !m.skip)
+profile.output.mappings.filter(m => m.options && m.options.length > 0).forEach(m => m.options = m.options.filter(o => !o.skip))
+
+if (!profile.input) throw new Error("Missing 'input' in profile")
+if (!profile.output) throw new Error("Missing 'output' in profile")
+if (!profile.input.include && !profile.input.exclude) throw new Error("Missing 'input.include' or 'input.exclude' in profile, all files are excluded by default")
+if (!profile.output.mappings || profile.output.mappings.length === 0) throw new Error("No 'output.mappings' defined")
+if (profile.output.mappings.some(m => !m.output)) throw new Error("'output' must be defined for each 'mappings'")
+
+// endregion
 
 const mapper: ProfileMapper = new ProfileMapper(profile)
 

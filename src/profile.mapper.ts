@@ -7,7 +7,7 @@ import {Mapping, Option, Profile} from './profile'
 import {DefaultSnippetResolver, parsePredicate, SnippetContext, SnippetResolver, toArray} from './snippet'
 import {WorkerContext} from './worker'
 
-const logger = LoggerFactory.get('builder')
+const logger = LoggerFactory.get('mapper')
 
 export class ProfileMapper {
 
@@ -15,9 +15,12 @@ export class ProfileMapper {
 
     constructor(profile: Profile) {
         this.profile = profile
+        logger.info("Using profile '%s'", profile.id)
     }
 
     async apply(inputFile: string): Promise<WorkerContext> {
+        logger.info("Applying profile '%s' on '%s' ...", this.profile.id, inputFile)
+
         return new InputMediaBuilder()
             .build(this.profile, inputFile)
             .then(i => new OutputMediaBuilder()
@@ -65,20 +68,10 @@ class InputMediaBuilder {
 class OutputMediaBuilder {
 
     async build(profile: Profile, input: InputMedia): Promise<OutputMedia[]> {
-        // TODO Move to configuration validator
-        if (!profile.output.mappings) {
-            throw new Error('No task defined')
-        }
-
-        if (profile.output.mappings.filter(tm => !tm.skip).some(tm => !tm.output)) {
-            throw new Error("An output must be defined for each 'mappings'")
-        }
-
         return new Promise<OutputMedia[]>(resolve => {
             let outputsCount = 0
 
             const outputs: OutputMedia[] = profile.output.mappings
-                .filter(m => !m.skip)
                 .map(m => getMappingBuilder(m))
                 .map(b => {
                     let output = b.build({profile: profile, input: input}, outputsCount)
@@ -123,10 +116,10 @@ class SingleMappingBuilder extends MappingBuilder {
     }
 
     build(context: SnippetContext, outputsCount: number): OutputMedia[] {
-        logger.info('Building [%s] ...', this.mapping.id)
+        logger.info('> %s:%s ...', context.profile.id, this.mapping.id)
 
         if (this.mapping.when && !parsePredicate(this.mapping.when)(context)) {
-            logger.warn("> 'when' directive does not match the current context")
+            logger.warn(">> 'when' directive does not match the current context")
             return []
         }
 
@@ -144,15 +137,12 @@ class SingleMappingBuilder extends MappingBuilder {
 
         if (this.mapping.options && this.mapping.options.length > 0) {
             output.params.push(...this.mapping.options
-                .filter(o => !o.skip)
                 .filter(o => !o.on || o.on === 'none')
                 .filter(o => parsePredicate(o.when)(localContext))
                 .map(o => toArray(o.params))
                 .reduce((a, b) => a.concat(...b), []))
 
-            options.push(...this.mapping.options
-                .filter(o => !o.skip)
-                .filter(o => o.on && o.on !== 'none'))
+            options.push(...this.mapping.options.filter(o => o.on && o.on !== 'none'))
         }
 
         // Resolve streams
@@ -206,13 +196,13 @@ class ChapterMappingBuilder extends MappingBuilder {
     }
 
     build(context: SnippetContext, outputsCount: number): OutputMedia[] {
-        logger.info('Building [%s] ...', this.mapping.id)
+        logger.info('> %s:%s ...', context.profile.id, this.mapping.id)
 
         let chaptersCount = 1
         let chapters: Chapter[] = context.input.chapters
 
         if (!chapters || chapters.length === 0) {
-            logger.warn("> No chapter")
+            logger.warn(">> No chapter")
             return []
         }
 
@@ -261,10 +251,10 @@ class ManyMappingBuilder extends MappingBuilder {
     }
 
     build(context: SnippetContext, outputsCount: number): OutputMedia[] {
-        logger.info('Building [%s] ...', this.mapping.id)
+        logger.info('> %s:%s ...', context.profile.id, this.mapping.id)
 
         if (this.mapping.options) {
-            logger.warn("> 'options' are disabled when `on != 'none'`")
+            logger.warn(">> 'options' are disabled when `on != 'none'`")
         }
 
         const resolver: SnippetResolver = new DefaultSnippetResolver()
@@ -332,16 +322,16 @@ function resolveExtension(codecName: string): string {
     if (possibleExtensions && possibleExtensions.length > 0) {
         if (possibleExtensions.length === 1) {
             extension = possibleExtensions[0].extension
-            logger.verbose("> Using extension '%s' for codec '%'", extension, codecName)
+            logger.verbose(">> Using extension '%s' for codec '%'", extension, codecName)
         }
         else {
             extension = possibleExtensions[0].extension
-            logger.warn("> Several occurences match the codec '%s': [%s], using '%s'", codecName, possibleExtensions.map(ec => ec.codecName + '=' + ec.extension), extension)
+            logger.warn(">> Several occurences match the codec '%s': [%s], using '%s'", codecName, possibleExtensions.map(ec => ec.codecName + '=' + ec.extension), extension)
         }
     }
     else {
         extension = codecName
-        logger.debug("> Unable to find the extension for codec '%s', using '%s'", codecName, extension)
+        logger.debug(">> Unable to find the extension for codec '%s', using '%s'", codecName, extension)
     }
 
     return extension

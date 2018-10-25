@@ -13,20 +13,24 @@ export class Scheduler {
     private readonly tasks: Map<number, string> = new Map<number, string>()
     private taskCount: number = 0
 
+    private currentTask: number = 0
+
     constructor(profile: Profile, onProcess: Queue.ProcessFunction<any, never>) {
         this.profile = profile
 
         this.queue = new Queue(
+            onProcess,
             {
-                id: ((file, callback) => callback(null, this.createId(file))),
-                process: onProcess,
-                afterProcessDelay: 10 * 1000 // Waiting 10 seconds
+                id: (file, callback) => callback(null, this.createId(file)),
+                afterProcessDelay: 10 * 1000, // Waiting 10 seconds
+                cancelIfRunning: false
             })
             .on('task_queued', (id, arg) => {
                 logger.info('#%s - Scheduled: %s', id, arg)
             })
             .on('task_started', id => {
                 logger.info('#%s - Started', id)
+                this.currentTask = id
             })
             .on('task_finish', id => {
                 logger.info('#%s - Done', id)
@@ -38,6 +42,7 @@ export class Scheduler {
             })
             .on('error', (id, error) => {
                 logger.error('#%s - %s', id, error)
+                this.tasks.delete(id)
             })
 
         process.on('exit', () => this.queue.destroy(() => {
@@ -49,12 +54,12 @@ export class Scheduler {
     }
 
     cancel(file: string) {
-        let id = this.findId(file)
-        if (id > 0) {
+        const id = this.findId(file)
+        if (id > this.currentTask) {
             this.queue.cancel(id, () => {
                 logger.info('#%s - Cancelled', id)
+                this.tasks.delete(id)
             })
-            this.tasks.delete(id)
         }
     }
 
@@ -70,6 +75,6 @@ export class Scheduler {
                 return k
             }
         }
-        return 0
+        return -1
     }
 }

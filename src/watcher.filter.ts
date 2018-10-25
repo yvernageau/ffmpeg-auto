@@ -49,11 +49,6 @@ export class ExtensionFilter implements AsyncFileFilter {
     }
 
     async test(file: string): Promise<boolean> {
-        // TODO Move to configuration validator
-        if (!this.include && !this.exclude) {
-            throw new Error(`Missing 'input.include' or 'input.exclude' in profile, all files are excluded by default`)
-        }
-
         return new Promise<boolean>(resolve => {
             const extension = path.parse(file).ext.replace(/^\./, '')
             return resolve(this.include && !!extension.match(`^(?:${this.include})$`) || this.exclude && !extension.match(`^(?:${this.exclude})$`))

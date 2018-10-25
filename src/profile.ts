@@ -28,7 +28,7 @@ export class InputConfig extends IOConfig {
 
     params?: Snippets = []
 
-    remove?: boolean
+    deleteAfterProcess?: boolean
 }
 
 // TODO Support for filters (filter_complex)

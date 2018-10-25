@@ -159,7 +159,9 @@ class SetOwnerTask extends WorkerTask {
         while (currentPath !== parentDirectory) {
             const stat = fs.statSync(currentPath)
             if (stat.uid !== uid || stat.gid !== gid) { // Ensure the owner is not already defined
-                fs.chown(currentPath, uid, gid).catch(reason => logger.warn("Cannot define the owner (%d:%d) of '%s': %s", uid, gid, file, reason))
+                fs.chown(currentPath, uid, gid)
+                    .then(() => logger.debug("Owner (%d:%d) defined for '%s'", uid, gid, currentPath))
+                    .catch(reason => logger.warn("Cannot define the owner (%d:%d) of '%s': %s", uid, gid, file, reason))
             }
             currentPath = path.dirname(currentPath)
         }
@@ -174,8 +176,11 @@ class UpdateExcludeListTask extends WorkerTask {
 
     execute() {
         const excludeList = path.resolve(this.worker.profile.output.directory, 'exclude.list')
-        const inputFile = this.worker.input.resolvePath(this.worker.profile.input.directory)
-        fs.appendFile(excludeList, inputFile + '\n').catch(reason => logger.warn("Failed to write '%s' in the exclude.list: %s", inputFile, reason))
+        const file = this.worker.input.resolvePath(this.worker.profile.input.directory)
+
+        fs.appendFile(excludeList, file + '\n')
+            .then(() => logger.debug("'%s' registered in 'exclude.list'", file))
+            .catch(reason => logger.warn("Failed to register '%s' in 'exclude.list': %s", file, reason))
     }
 }
 
@@ -186,9 +191,12 @@ class CleanInputTask extends WorkerTask {
     }
 
     execute() {
-        if (this.worker.profile.input.remove) {
-            const inputFile = this.worker.input.resolvePath(this.worker.profile.input.directory)
-            fs.unlink(inputFile).catch(reason => logger.warn("Failed to delete '%s': %s", inputFile, reason))
+        if (this.worker.profile.input.deleteAfterProcess) {
+            const file = this.worker.input.resolvePath(this.worker.profile.input.directory)
+
+            fs.unlink(file)
+                .then(() => logger.info("'%s' deleted (deleteAfterProcess=%s)", file, true))
+                .catch(reason => logger.warn("Failed to delete '%s' (deleteAfterProcess=%s): %s", file, reason))
         }
     }
 }
