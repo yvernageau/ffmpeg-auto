@@ -102,7 +102,7 @@ export class Watcher extends EventEmitter {
      */
     private async notify() {
         // TODO Regroups external resources (same base name) and includes them as input (subtitles + audio -> container)
-        for (let file in this.pendingFiles.sort()) {
+        for (let file of this.pendingFiles.sort()) {
             await this.filter(file)
                 .then(included => {
                     if (included) {
