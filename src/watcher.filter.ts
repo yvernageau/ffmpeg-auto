@@ -67,6 +67,6 @@ export class ExtensionFilter implements AsyncFileFilter {
 export class FFProbeFilter implements AsyncFileFilter {
 
     async test(file: string): Promise<boolean> {
-        return new Promise<boolean>(resolve => ffprobe(file, ['-show_chapters'], (err, data) => resolve(!err && data && !isNaN(data.format.duration))))
+        return new Promise<boolean>(resolve => ffprobe(file, ['-show_chapters'], (err, data) => resolve(!err && !!data)))
     }
 }

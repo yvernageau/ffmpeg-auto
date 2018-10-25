@@ -35,7 +35,6 @@ export class Watcher extends EventEmitter {
             {
                 awaitWriteFinish: true,
                 alwaysStat: true,
-                ignorePermissionErrors: true,
                 persistent: watch
             })
             .on('add', file => this.onAdd(file))
@@ -93,14 +92,17 @@ export class Watcher extends EventEmitter {
         this.pendingTimer = undefined
     }
 
+    private async filter(file: string): Promise<boolean> {
+        return await Promise.all(this.filters.map(f => f.test(file)))
+            .then(results => results.every(value => value))
+    }
+
     /**
      * Notifies all listeners.
      */
     private async notify() {
         // TODO Regroups external resources (same base name) and includes them as input (subtitles + audio -> container)
-        const sortedFiles = this.pendingFiles.sort()
-
-        for (let file of sortedFiles) {
+        for (let file in this.pendingFiles.sort()) {
             await this.filter(file)
                 .then(included => {
                     if (included) {
@@ -114,9 +116,5 @@ export class Watcher extends EventEmitter {
         }
 
         this.reset()
-    }
-
-    private async filter(file: string): Promise<boolean> {
-        return await Promise.all(this.filters.map(f => f.test(file))).then(results => results.every(value => value))
     }
 }
