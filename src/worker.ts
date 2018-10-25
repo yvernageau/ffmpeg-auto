@@ -1,12 +1,13 @@
 import {EventEmitter} from 'events'
 import * as ffmpeg from 'fluent-ffmpeg'
+import {FfmpegCommand} from 'fluent-ffmpeg'
 import * as fs from 'fs-extra'
 import 'moment-duration-format'
 import * as path from 'path'
 import {LoggerFactory} from './logger'
 import {InputMedia, OutputMedia} from './media'
 import {Profile} from './profile'
-import {LoggingWorkerListener, PostWorkerListeners, ProgressWorkerListener} from './worker.listener'
+import {LoggingWorkerListener, ProgressWorkerListener} from './worker.listener'
 
 const logger = LoggerFactory.get('worker')
 
@@ -15,6 +16,8 @@ export type WorkerContext = {
     input: InputMedia
     outputs: OutputMedia[]
 }
+
+type WorkerDirection = 'in' | 'out'
 
 export class Worker extends EventEmitter {
 
@@ -31,89 +34,184 @@ export class Worker extends EventEmitter {
         this.input = context.input
         this.outputs = context.outputs
 
+        this.on('end', () => {
+            new SetOwnerTask(this).execute()
+            new UpdateExcludeListTask(this).execute()
+            new CleanInputTask(this).execute()
+        })
+
+        this.on('error', () => {
+            new CleanOutputTask(this).execute()
+        })
+
         // Register the default listeners
         new LoggingWorkerListener(this)
         new ProgressWorkerListener(this)
-
-        PostWorkerListeners.subscribe(this)
     }
 
     async execute() {
         if (this.locked) {
-            return Promise.reject('This execution has already been done')
+            return Promise.reject('This task has already been executed')
         }
         this.locked = true
 
         return new Promise((resolve, reject) => {
-            let command = ffmpeg()
+            let command = this.outputs.reduce((c, o) => this.appendOutput(o, c), this.appendInput(this.input, ffmpeg()))
 
-            // Configure input
-            let inputOptions: string[] = this.input.params
-                .map(a => a.trim().split(/\s+/))
-                .reduce((a, b) => a.concat(...b), [])
+            this.addListeners(command)
 
-            const inputPath = this.input.resolvePath(this.profile.input.directory)
+            command
+                .on('end', () => resolve())
+                .on('error', (err: Error) => reject(err.message)) // TODO Use `command.kill()` ?
+                .run()
+        })
+    }
 
-            logger.debug('input = %s', inputPath)
-            logger.debug('input.options = %s', inputOptions.join(' '))
+    private appendInput(input: InputMedia, command: FfmpegCommand): FfmpegCommand {
+        return appendArgs(
+            command,
+            'in',
+            input.resolvePath(this.profile.input.directory),
+            input.params,
+            (c, f) => c.input(f),
+            (c, os) => c.inputOption(os)
+        )
+    }
 
-            command.input(inputPath)
-            if (inputOptions && inputOptions.length > 0) {
-                command.inputOption(...inputOptions)
-            }
+    private appendOutput(output: OutputMedia, command: FfmpegCommand): FfmpegCommand {
+        return appendArgs(
+            command,
+            'out',
+            output.resolvePath(this.profile.output.directory),
+            [
+                ...output.params,
+                ...output.streams.map(os => os.params).reduce((a, b) => a.concat(...b), [])
+            ],
+            (c, f) => c.output(f),
+            (c, os) => c.outputOption(os)
+        )
+    }
 
-            // Configure output(s)
-            this.outputs.forEach(o => {
-                const globalOptions: string[] = o.params
-                    .map(a => a.trim().split(/\s+/))
-                    .reduce((a, b) => a.concat(...b), [])
-
-                const streamOptions: string[] = o.streams
-                    .map(os => os.params)
-                    .reduce((a, b) => a.concat(...b), [])
-                    .map(a => (<string>a).trim().split(/\s+/))
-                    .reduce((a, b) => a.concat(...b), [])
-
-                const outputOptions = [...streamOptions, ...globalOptions]
-
-                // Create missing directories and set owner
-                const outputPath = o.resolvePath(this.profile.output.directory)
-                fs.mkdirpSync(path.dirname(outputPath))
-
-                logger.debug('output:%d = %s', o.id, outputPath)
-                logger.debug('output:%d.options = %s', o.id, outputOptions.join(' '))
-
-                command.output(outputPath)
-                if (outputOptions && outputOptions.length > 0) {
-                    command.outputOptions(...outputOptions)
+    private addListeners(command: FfmpegCommand) {
+        command
+            .on('start', (commandLine: string) => this.emit('start', commandLine))
+            .on('progress', (progress: any) => this.emit('progress', progress))
+            .on('stderr', (line: string) => {
+                if (!line.match(/^frame=\s*\d+/) && !line.match(/Press /)) { // Skip progress and prompt
+                    this.emit('line', line)
                 }
             })
+            .on('end', () => this.emit('end'))
+            .on('error', (err: Error) => this.emit('error', err))
+    }
+}
 
-            // Configure events
-            command
-                .on('start', commandLine => {
-                    this.emit('start', commandLine)
-                })
-                .on('progress', progress => {
-                    this.emit('progress', progress)
-                })
-                .on('stderr', (line: string) => {
-                    if (!line.match(/^frame=\s*\d+/) && !line.match(/Press /)) { // Skip progress and prompt
-                        this.emit('line', line)
-                    }
-                })
-                .on('end', () => {
-                    this.emit('end')
-                    resolve()
-                })
-                .on('error', (err: Error) => {
-                    command.kill('SIGINT')
-                    this.emit('error', err)
-                    reject(err.message.split(/([\r\n]|\r\n)$/).map(l => l.trim()).filter(l => l).join('\n'))
-                })
+function appendArgs(command: FfmpegCommand, direction: WorkerDirection, file: string, options: string[], setFile: (c: FfmpegCommand, f: string) => void, setOptions: (c: FfmpegCommand, os: string[]) => void): FfmpegCommand {
+    logger.debug('%s = %s', direction, file)
+    logger.debug('%s.options = %s', direction, options.join(' '))
 
-            // Execute command
-            command.run()
+    if (direction === 'out') {
+        fs.mkdirpSync(path.dirname(file))
+    }
+
+    setFile(command, file)
+
+    if (options && options.length > 0) {
+        setOptions(command, options.map(a => a.trim().split(/\s+/)).reduce((a, b) => a.concat(...b), []))
+    }
+
+    return command
+}
+
+abstract class WorkerTask {
+
+    protected readonly worker: Worker
+
+    protected constructor(worker: Worker) {
+        this.worker = worker
+    }
+
+    abstract execute(): void
+}
+
+class SetOwnerTask extends WorkerTask {
+
+    constructor(worker: Worker) {
+        super(worker)
+    }
+
+    execute() {
+        if (process.env.UID && process.env.GID) {
+            const uid = parseInt(process.env.UID)
+            const gid = parseInt(process.env.GID)
+
+            this.worker.outputs
+                .map(o => o.resolvePath(this.worker.profile.output.directory))
+                .forEach(p => this.setOwner(p, uid, gid))
+        }
+    }
+
+    private async setOwner(file: string, uid: number, gid: number) {
+        const parentDirectory = this.worker.profile.output.directory.replace(`${path.sep}$`, '') // Remove the tailing separator
+
+        // Define the owner of the file, then its parent directories until the base directory
+        let currentPath = file
+        while (currentPath !== parentDirectory) {
+            const stat = fs.statSync(currentPath)
+            if (stat.uid !== uid || stat.gid !== gid) { // Ensure the owner is not already defined
+                fs.chown(currentPath, uid, gid).catch(reason => logger.warn("Cannot define the owner (%d:%d) of '%s': %s", uid, gid, file, reason))
+            }
+            currentPath = path.dirname(currentPath)
+        }
+    }
+}
+
+class UpdateExcludeListTask extends WorkerTask {
+
+    constructor(worker: Worker) {
+        super(worker)
+    }
+
+    execute() {
+        const excludeList = path.resolve(this.worker.profile.output.directory, 'exclude.list')
+        const inputFile = this.worker.input.resolvePath(this.worker.profile.input.directory)
+        fs.appendFile(excludeList, inputFile + '\n').catch(reason => logger.warn("Failed to write '%s' in the exclude.list: %s", inputFile, reason))
+    }
+}
+
+class CleanInputTask extends WorkerTask {
+
+    constructor(worker: Worker) {
+        super(worker)
+    }
+
+    execute() {
+        if (this.worker.profile.input.remove) {
+            const inputFile = this.worker.input.resolvePath(this.worker.profile.input.directory)
+            fs.unlink(inputFile).catch(reason => logger.warn("Failed to delete '%s': %s", inputFile, reason))
+        }
+    }
+}
+
+class CleanOutputTask extends WorkerTask {
+
+    constructor(worker: Worker) {
+        super(worker)
+    }
+
+    execute() {
+        return this.worker.outputs
+            .map(o => o.resolvePath(this.worker.profile.output.directory))
+            .forEach(f => this.deleteIfPresent(f))
+    }
+
+    private deleteIfPresent(file: string) {
+        fs.stat(file, se => {
+            if (se) return
+
+            fs.unlink(file, ue => {
+                if (ue) return
+            })
         })
     }
 }

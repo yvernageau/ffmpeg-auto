@@ -1,4 +1,3 @@
-import * as fs from 'fs-extra'
 import * as moment from 'moment'
 import {Duration, Moment} from 'moment'
 import * as path from 'path'
@@ -18,103 +17,6 @@ export abstract class WorkerListener {
         this.worker = worker
     }
 }
-
-// region Post-execution tasks
-
-export class PostWorkerListeners {
-
-    static subscribe(worker: Worker) {
-        worker.on('end', () => new SetOwnerTask(worker).execute())
-        worker.on('end', () => new UpdateExcludeListTask(worker).execute())
-        worker.on('end', () => new CleanInputTask(worker).execute())
-
-        worker.on('error', () => new CleanOutputTask(worker).execute())
-    }
-}
-
-class SetOwnerTask extends WorkerListener {
-
-    constructor(worker: Worker) {
-        super(worker)
-    }
-
-    execute() {
-        if (process.env.UID && process.env.GID) {
-            const uid = parseInt(process.env.UID)
-            const gid = parseInt(process.env.GID)
-
-            this.worker.outputs
-                .map(o => o.resolvePath(this.worker.profile.output.directory))
-                .forEach(p => this.setOwner(p, uid, gid))
-        }
-    }
-
-    private async setOwner(file: string, uid: number, gid: number) {
-        const parentDirectory = this.worker.profile.output.directory.replace(`${path.sep}$`, '') // Remove the tailing separator
-
-        // Define the owner of the file, then its parent directories until the base directory
-        let currentPath = file
-        while (currentPath !== parentDirectory) {
-            const stat = fs.statSync(currentPath)
-            if (stat.uid !== uid || stat.gid !== gid) { // Ensure the owner is not already defined
-                fs.chown(currentPath, uid, gid).catch(reason => logger.warn("Cannot define the owner (%d:%d) of '%s': %s", uid, gid, file, reason))
-            }
-            currentPath = path.dirname(currentPath)
-        }
-    }
-}
-
-class UpdateExcludeListTask extends WorkerListener {
-
-    constructor(worker: Worker) {
-        super(worker)
-    }
-
-    execute() {
-        const excludeList = path.resolve(this.worker.profile.output.directory, 'exclude.list')
-        const inputFile = this.worker.input.resolvePath(this.worker.profile.input.directory)
-        fs.appendFile(excludeList, inputFile + '\n').catch(reason => logger.warn("Failed to write '%s' in the exclude.list: %s", inputFile, reason))
-    }
-}
-
-class CleanInputTask extends WorkerListener {
-
-    constructor(worker: Worker) {
-        super(worker)
-    }
-
-    execute() {
-        if (this.worker.profile.input.remove) {
-            const inputFile = this.worker.input.resolvePath(this.worker.profile.input.directory)
-            fs.unlink(inputFile).catch(reason => logger.warn("Failed to delete '%s': %s", inputFile, reason))
-        }
-    }
-}
-
-class CleanOutputTask extends WorkerListener {
-
-    constructor(worker: Worker) {
-        super(worker)
-    }
-
-    execute() {
-        return this.worker.outputs
-            .map(o => o.resolvePath(this.worker.profile.output.directory))
-            .forEach(f => this.deleteIfPresent(f))
-    }
-
-    private deleteIfPresent(file: string) {
-        fs.stat(file, se => {
-            if (se) return
-
-            fs.unlink(file, ue => {
-                if (ue) return
-            })
-        })
-    }
-}
-
-// endregion
 
 export class LoggingWorkerListener extends WorkerListener {
 
