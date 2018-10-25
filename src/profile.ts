@@ -28,7 +28,7 @@ export class InputConfig extends IOConfig {
 
     params?: Snippets = []
 
-    remove: boolean
+    remove?: boolean
 }
 
 // TODO Support for filters (filter_complex)
@@ -42,7 +42,7 @@ export class OutputConfig extends IOConfig {
 export class Task {
     id?: string
 
-    on?: StreamSelector = 'none'
+    on?: StreamSelector
     when?: Snippets = 'true'
     skip?: boolean = false
 

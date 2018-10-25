@@ -39,12 +39,6 @@ const args = yargs
         type: 'boolean',
         default: false
     })
-    .option('r', {
-        alias: 'remove',
-        desc: 'Remove the input files after a successful execution. WARNING: Ensure your profile works as expected before',
-        type: 'boolean',
-        default: false
-    })
     .option('debug', {
         desc: 'Display debug information',
         type: 'boolean',
@@ -54,7 +48,6 @@ const args = yargs
 
 const profile: Profile = Profile.load(args.profile)
 profile.input.directory = args.input
-profile.input.remove = args.remove
 profile.output.directory = args.output
 
 LoggerFactory.debug = args.debug
@@ -63,7 +56,6 @@ logger.info('profile = %s', args.profile)
 logger.info('input   = %s', args.input)
 logger.info('output  = %s', args.output)
 logger.info('watch   = %s', args.watch)
-logger.info('remove  = %s', args.remove)
 logger.info('debug   = %s', args.debug)
 
 // TODO Validate profile
