@@ -322,7 +322,7 @@ function resolveExtension(codecName: string): string {
     if (possibleExtensions && possibleExtensions.length > 0) {
         if (possibleExtensions.length === 1) {
             extension = possibleExtensions[0].extension
-            logger.verbose(">> Using extension '%s' for codec '%'", extension, codecName)
+            logger.verbose(">> Using extension '%s' for codec '%s'", extension, codecName)
         }
         else {
             extension = possibleExtensions[0].extension
