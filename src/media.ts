@@ -18,7 +18,6 @@ export function resolvePath(p: Path, basedir: string) {
 export class Media {
     readonly id: number = 0
     path: Path
-
     params: Snippet[]
 
     constructor(id: number, path?: Path) {
@@ -38,9 +37,7 @@ export class InputMedia extends Media {
 
     constructor(id: number, path: Path, params: Snippet[] = [], meta: any) {
         super(id, path)
-
         this.params = params
-
         this.streams = meta.streams
         this.format = meta.format
         this.chapters = meta.chapters
@@ -53,11 +50,8 @@ export class OutputMedia extends Media {
 
     constructor(id: number, source: InputMedia, params: Snippet[] = [], streams: OutputStream[] = []) {
         super(id, undefined)
-
         this.source = source
-
         this.params = params
-
         this.streams = streams
     }
 }
@@ -73,7 +67,6 @@ export type InputStream = Stream & {
 
     readonly codec_name: string
     readonly codec_type: CodecType
-
     readonly disposition?: Dispositions
     readonly tags?: Tags
 }

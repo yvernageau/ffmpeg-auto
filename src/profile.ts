@@ -6,7 +6,6 @@ export class Profile {
     [key: string]: any
 
     id: string
-
     input: InputConfig
     output: OutputConfig
 
@@ -25,9 +24,7 @@ export class IOConfig {
 export class InputConfig extends IOConfig {
     include?: RegExp
     exclude?: RegExp
-
     params?: Snippets = []
-
     deleteAfterProcess?: boolean
 }
 
@@ -35,24 +32,20 @@ export class InputConfig extends IOConfig {
 export class OutputConfig extends IOConfig {
     defaultExtension?: string = 'mkv'
     writeLog?: boolean = false
-
     mappings: Mapping[] = []
 }
 
 export class Task {
     id?: string
-
     on?: StreamSelector
     when?: Snippets = 'true'
     skip?: boolean = false
-
     params?: Snippets = []
 }
 
 export class Mapping extends Task {
     output: Snippet = '{fn}'
     format?: string
-
     options?: Option[] = []
 }
 

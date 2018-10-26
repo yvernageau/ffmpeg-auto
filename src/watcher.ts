@@ -72,13 +72,19 @@ export class Watcher extends EventEmitter {
      * Updates the timeout before sending notifications for new files.
      */
     private updateTimeout(timeout: number = Watcher.TIMEOUT) {
+        let waiting: boolean = false
+
         if (this.pendingTimer) {
+            waiting = true
             clearTimeout(this.pendingTimer)
         }
 
         if (this.pendingFiles.length > 0) {
             this.pendingTimer = setTimeout(() => this.notify(), timeout)
-            logger.debug('Waiting %d seconds for stabilization ...', timeout / 1000)
+
+            if (!waiting) {
+                logger.debug('Waiting for stabilization before processing ...')
+            }
         }
     }
 
@@ -92,9 +98,9 @@ export class Watcher extends EventEmitter {
         this.pendingTimer = undefined
     }
 
-    private async filter(file: string): Promise<boolean> {
-        return await Promise.all(this.filters.map(f => f.test(file)))
-            .then(results => results.every(value => value))
+    private async filter(file: string): Promise<void> {
+        return await Promise.all(this.filters.map(f => f.test(file))).then(() => {
+        })
     }
 
     /**
@@ -104,15 +110,8 @@ export class Watcher extends EventEmitter {
         // TODO Regroups external resources (same base name) and includes them as input (subtitles + audio -> container)
         for (let file of this.pendingFiles.sort()) {
             await this.filter(file)
-                .then(included => {
-                    if (included) {
-                        this.emit('add', file)
-                    }
-                    else {
-                        logger.debug("X '%s'", file)
-                    }
-                })
-                .catch(reason => logger.debug("X '%s': %s", file, reason))
+                .then(() => this.emit('add', file))
+                .catch(reason => logger.debug("x '%s': %s", file, reason))
         }
 
         this.reset()

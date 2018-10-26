@@ -5,7 +5,10 @@ import {InputConfig, OutputConfig} from './profile'
 
 export interface AsyncFileFilter {
 
-    test(file: string): Promise<boolean>
+    /**
+     * @return an detailed error when the file failed the test
+     */
+    test(file: string): Promise<void>
 }
 
 /**
@@ -19,19 +22,23 @@ export class ExcludeListFilter implements AsyncFileFilter {
         this.directory = config.directory
     }
 
-    async test(file: string): Promise<boolean> {
+    async test(file: string): Promise<void> {
         const excludeListPath = path.resolve(this.directory, 'exclude.list')
 
         return fs.stat(excludeListPath)
             .then(stat => {
                 if (!stat) { // 'exclude.list' does not exist
-                    return true
+                    return Promise.resolve()
                 }
 
                 let lines = fs.readFileSync(excludeListPath, {encoding: 'utf-8'}).split('\n')
-                return !lines.filter(l => l === file)
+                if (lines.filter(l => l === file).length > 0) {
+                    return Promise.reject(`'${file}' has already been processed`)
+                }
+                else {
+                    return Promise.resolve()
+                }
             })
-            .catch(() => true)
     }
 }
 
@@ -48,10 +55,15 @@ export class ExtensionFilter implements AsyncFileFilter {
         this.exclude = config.exclude
     }
 
-    async test(file: string): Promise<boolean> {
-        return new Promise<boolean>(resolve => {
+    async test(file: string): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
             const extension = path.parse(file).ext.replace(/^\./, '')
-            return resolve(this.include && !!extension.match(`^(?:${this.include})$`) || this.exclude && !extension.match(`^(?:${this.exclude})$`))
+            if (this.include && !!extension.match(`^(?:${this.include})$`) || this.exclude && !extension.match(`^(?:${this.exclude})$`)) {
+                resolve()
+            }
+            else {
+                reject(`'${file}' is excluded (or not included) in the 'profile.input' configuration`)
+            }
         })
     }
 }
@@ -61,7 +73,17 @@ export class ExtensionFilter implements AsyncFileFilter {
  */
 export class FFProbeFilter implements AsyncFileFilter {
 
-    async test(file: string): Promise<boolean> {
-        return new Promise<boolean>(resolve => ffprobe(file, ['-show_chapters'], (err, data) => resolve(!err && !!data)))
+    async test(file: string): Promise<void> {
+        return new Promise<void>((resolve, reject) => ffprobe(file, ['-show_chapters'], (err, data) => {
+            if (!err && !!data) {
+                resolve()
+            }
+            else if (err) {
+                reject(err.message)
+            }
+            else {
+                reject(`'${file}' is not supported: ffprobe returns no data`)
+            }
+        }))
     }
 }
