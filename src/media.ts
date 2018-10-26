@@ -24,10 +24,6 @@ export class Media {
         this.id = id
         this.path = path
     }
-
-    resolvePath(basedir: string): string {
-        return resolvePath(this.path, basedir)
-    }
 }
 
 export class InputMedia extends Media {

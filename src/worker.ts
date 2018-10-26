@@ -5,7 +5,7 @@ import * as fs from 'fs-extra'
 import 'moment-duration-format'
 import * as path from 'path'
 import {LoggerFactory} from './logger'
-import {InputMedia, OutputMedia} from './media'
+import {InputMedia, OutputMedia, resolvePath} from './media'
 import {Profile} from './profile'
 import {LoggingWorkerListener, ProgressWorkerListener} from './worker.listener'
 
@@ -71,7 +71,7 @@ export class Worker extends EventEmitter {
         return appendArgs(
             command,
             'in',
-            input.resolvePath(this.profile.input.directory),
+            resolvePath(input.path, this.profile.input.directory),
             input.params,
             (c, f) => c.input(f),
             (c, os) => c.inputOption(os)
@@ -82,7 +82,7 @@ export class Worker extends EventEmitter {
         return appendArgs(
             command,
             'out',
-            output.resolvePath(this.profile.output.directory),
+            resolvePath(output.path, this.profile.output.directory),
             [
                 ...output.params,
                 ...output.streams.map(os => os.params).reduce((a, b) => a.concat(...b), [])
@@ -146,7 +146,7 @@ class SetOwnerTask extends WorkerTask {
             const gid = parseInt(process.env.GID)
 
             this.worker.outputs
-                .map(o => o.resolvePath(this.worker.profile.output.directory))
+                .map(o => resolvePath(o.path, this.worker.profile.output.directory))
                 .forEach(p => this.setOwner(p, uid, gid))
         }
     }
@@ -176,7 +176,7 @@ class UpdateExcludeListTask extends WorkerTask {
 
     execute() {
         const excludeList = path.resolve(this.worker.profile.output.directory, 'exclude.list')
-        const file = this.worker.input.resolvePath(this.worker.profile.input.directory)
+        const file = resolvePath(this.worker.input.path, this.worker.profile.input.directory)
 
         fs.appendFile(excludeList, file + '\n')
             .then(() => logger.debug("'%s' registered in 'exclude.list'", file))
@@ -192,7 +192,7 @@ class CleanInputTask extends WorkerTask {
 
     execute() {
         if (this.worker.profile.input.deleteAfterProcess) {
-            const file = this.worker.input.resolvePath(this.worker.profile.input.directory)
+            const file = resolvePath(this.worker.input.path, this.worker.profile.input.directory)
 
             fs.unlink(file)
                 .then(() => logger.info("'%s' deleted (deleteAfterProcess=%s)", file, true))
@@ -209,7 +209,7 @@ class CleanOutputTask extends WorkerTask {
 
     execute() {
         return this.worker.outputs
-            .map(o => o.resolvePath(this.worker.profile.output.directory))
+            .map(o => resolvePath(o.path, this.worker.profile.output.directory))
             .forEach(f => this.deleteIfPresent(f))
     }
 
