@@ -2,7 +2,7 @@ import {ffprobe} from 'fluent-ffmpeg'
 import * as fs from 'fs-extra'
 import * as path from 'path'
 import {LoggerFactory} from './logger'
-import {Chapter, InputMedia, OutputMedia} from './media'
+import {Chapter, InputMedia, InputStream, OutputMedia, OutputStream, Path} from './media'
 import {Mapping, Option, Profile} from './profile'
 import {DefaultSnippetResolver, parsePredicate, SnippetContext, SnippetResolver, toArray} from './snippet'
 import {WorkerContext} from './worker'
@@ -38,30 +38,33 @@ export class ProfileMapper {
 class InputMediaBuilder {
 
     async build(profile: Profile, inputFile: string): Promise<InputMedia> {
-        return fs.stat(inputFile)
-            .then(() => new Promise<InputMedia>((resolve, reject) => {
-                ffprobe(inputFile, (err, data) => {
-                    if (err) {
-                        return reject(err.message)
-                    }
+        return new Promise<InputMedia>((resolve, reject) => {
+            if (!fs.existsSync(inputFile)) {
+                reject("'%s' no longer exists")
+            }
 
-                    const filepath = path.parse(inputFile)
-                    const input = new InputMedia(
-                        0,
-                        {
-                            parent: path.relative(profile.input.directory, filepath.dir),
-                            filename: filepath.name,
-                            extension: filepath.ext.replace(/^\./, '')
-                        },
-                        profile.input ? toArray(profile.input.params) : [],
-                        data
-                    )
+            ffprobe(inputFile, (err, data) => {
+                if (err) {
+                    return reject(err.message)
+                }
 
-                    resolveInputParameters(input, {profile: profile, input: input})
+                const filepath = path.parse(inputFile)
+                const input = new InputMedia(
+                    0,
+                    {
+                        parent: path.relative(profile.input.directory, filepath.dir),
+                        filename: filepath.name,
+                        extension: filepath.ext.replace(/^\./, '')
+                    },
+                    profile.input ? toArray(profile.input.params) : [],
+                    data
+                )
 
-                    resolve(input)
-                })
-            }))
+                resolveInputParameters(input, {profile: profile, input: input})
+
+                resolve(input)
+            })
+        })
     }
 }
 

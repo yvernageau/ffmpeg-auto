@@ -25,20 +25,19 @@ export class ExcludeListFilter implements AsyncFileFilter {
     async test(file: string): Promise<void> {
         const excludeListPath = path.resolve(this.directory, 'exclude.list')
 
-        return fs.stat(excludeListPath)
-            .then(stat => {
-                if (!stat) { // 'exclude.list' does not exist
-                    return Promise.resolve()
-                }
+        return new Promise<void>((resolve, reject) => {
+            if (!fs.existsSync(excludeListPath)) {
+                return resolve() // 'exclude.list' does not exist
+            }
 
-                let lines = fs.readFileSync(excludeListPath, {encoding: 'utf-8'}).split('\n')
-                if (lines.filter(l => l === file).length > 0) {
-                    return Promise.reject(`'${file}' has already been processed`)
-                }
-                else {
-                    return Promise.resolve()
-                }
-            })
+            let lines = fs.readFileSync(excludeListPath, {encoding: 'utf-8'}).split('\n')
+            if (lines.filter(l => l === file).length > 0) {
+                reject(`'${file}' has already been processed`)
+            }
+            else {
+                resolve()
+            }
+        })
     }
 }
 

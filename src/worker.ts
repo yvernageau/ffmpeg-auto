@@ -214,12 +214,9 @@ class CleanOutputTask extends WorkerTask {
     }
 
     private deleteIfPresent(file: string) {
-        fs.stat(file, se => {
-            if (se) return
-
-            fs.unlink(file, ue => {
-                if (ue) return
+        if (fs.existsSync(file)) {
+            fs.unlink(file, () => {
             })
-        })
+        }
     }
 }
