@@ -126,69 +126,97 @@ class SingleMappingBuilder extends MappingBuilder {
             return []
         }
 
-        let resolver: SnippetResolver = new DefaultSnippetResolver()
-
         const output = new OutputMedia(outputsCount, context.input)
         const localContext = {...context, output: output}
 
-        let options: Option[] = []
+        const options: Option[] = this.buildOptions(output, localContext)
 
-        // Resolve parameters
+        let streamsCount = 0
+
+        output.streams = context.input.streams
+            .map(s => {
+                let streams = this.buildStream(s, localContext, options, streamsCount)
+                streamsCount += streams.length
+                return streams
+            })
+            .reduce((arr, streams) => [...arr, ...streams], [])
+
+        output.path = this.buildPath(localContext)
+
+        // Ignore this output if it does not contain any stream
+        return streamsCount > 0 ? [output] : []
+    }
+
+    buildOptions(output: OutputMedia, context: SnippetContext) {
+        const options: Option[] = []
+
+        // Resolve global parameters
         if (this.mapping.params) {
             output.params.push(...this.mapping.params)
         }
 
         if (this.mapping.options && this.mapping.options.length > 0) {
+            // Resolve other global parameters
             output.params.push(...this.mapping.options
                 .filter(o => !o.on || o.on === 'none')
-                .filter(o => parsePredicate(o.when)(localContext))
+                .filter(o => parsePredicate(o.when)(context))
                 .map(o => toArray(o.params))
                 .reduce((a, b) => a.concat(...b), []))
 
+            // Resolve task parameters
             options.push(...this.mapping.options.filter(o => o.on && o.on !== 'none'))
         }
 
-        // Resolve streams
-        let streamsCount = 0
-        context.input.streams.forEach(s => {
-            let params: string[] = []
+        return options
+    }
 
-            let localOptions: Option[] = options
-                .filter(o => o.on === s.codec_type || o.on === 'all')
-                .filter(o => parsePredicate(o.when)({...localContext, stream: s}))
+    buildStream(stream: InputStream, context: SnippetContext, options: Option[], streamsCount: number): OutputStream[] {
+        const streams: OutputStream[] = []
+        const streamParams: string[] = []
 
-            if (localOptions && localOptions.length > 0) {
-                localOptions.forEach(o => {
-                    let optionParams: string[] = toArray(o.params)
-                    if (optionParams.some(p => !!p.match(/-map/))) {
-                        output.streams.push({
-                            index: streamsCount++,
-                            source: s,
-                            params: optionParams
-                        })
-                    }
-                    else {
-                        params.push(...optionParams)
-                    }
-                })
+        const localOptions: Option[] = options
+            .filter(o => o.on === 'all' || o.on === stream.codec_type || Array.isArray(o.on) && o.on.includes(stream.codec_type))
+            .filter(o => parsePredicate(o.when)({...context, stream: stream}))
 
-                output.streams.push({
-                    index: streamsCount++,
-                    source: s,
-                    params: ['-map {iid}', ...params]
-                })
-            }
-        })
-
-        // Resolve path
-        output.path = {
-            parent: context.input.path.parent,
-            filename: resolver.resolve(this.mapping.output, localContext),
-            extension: this.mapping.format ? this.mapping.format : context.profile.output.defaultExtension
+        if (localOptions.some(o => o.exclude)) {
+            return streams
         }
 
-        // Ignore this output if it does not contain any stream
-        return streamsCount > 0 ? [output] : []
+        if (localOptions && localOptions.length > 0) {
+            localOptions.forEach(o => {
+                let optionParams: string[] = toArray(o.params)
+                if (optionParams.some(p => !!p.match(/-map/))) {
+                    streams.push({
+                        index: streamsCount++,
+                        source: stream,
+                        params: optionParams
+                    })
+                }
+                else {
+                    streamParams.push(...optionParams)
+                }
+            })
+        }
+        else {
+            // Copy the input stream by default
+            streamParams.push('-c:{oid} copy')
+        }
+
+        streams.push({
+            index: streamsCount++,
+            source: stream,
+            params: ['-map {iid}', ...streamParams]
+        })
+
+        return streams
+    }
+
+    buildPath(context: SnippetContext): Path {
+        return {
+            parent: context.input.path.parent,
+            filename: new DefaultSnippetResolver().resolve(this.mapping.output, context),
+            extension: this.mapping.format ? this.mapping.format : context.profile.output.defaultExtension
+        }
     }
 }
 
@@ -260,30 +288,30 @@ class ManyMappingBuilder extends MappingBuilder {
             logger.warn(">> 'options' are disabled when `on != 'none'`")
         }
 
-        const resolver: SnippetResolver = new DefaultSnippetResolver()
-
         return context.input.streams
-            .filter(s => this.mapping.on === s.codec_type || this.mapping.on === 'all')
+            .filter(s => this.mapping.on === 'all' || this.mapping.on === s.codec_type || Array.isArray(this.mapping.on) && this.mapping.on.includes(s.codec_type))
             .filter(s => parsePredicate(this.mapping.when)({...context, stream: s}))
             .map(s => {
                 const output = new OutputMedia(outputsCount++, context.input)
 
-                // Resolve streams
                 output.streams.push({
                     index: 0,
                     source: s,
                     params: ['-map {iid}', ...toArray(this.mapping.params)]
                 })
 
-                // Resolve path
-                output.path = {
-                    parent: context.input.path.parent,
-                    filename: resolver.resolve(this.mapping.output, {...context, output: output, stream: s}),
-                    extension: this.mapping.format ? this.mapping.format : resolveExtension(s.codec_name),
-                }
+                output.path = this.buildPath({...context, output: output, stream: s})
 
                 return output
             })
+    }
+
+    buildPath(context: SnippetContext): Path {
+        return {
+            parent: context.input.path.parent,
+            filename: new DefaultSnippetResolver().resolve(this.mapping.output, context),
+            extension: this.mapping.format ? this.mapping.format : resolveExtension(context.stream.codec_name),
+        }
     }
 }
 

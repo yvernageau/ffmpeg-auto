@@ -50,6 +50,7 @@ export class Mapping extends Task {
 }
 
 export class Option extends Task {
+    exclude: boolean
 }
 
 export type StreamSelector = 'all' | 'none' | 'chapters' | CodecType | CodecType[]
