@@ -73,7 +73,6 @@ class OutputMediaBuilder {
     async build(profile: Profile, input: InputMedia): Promise<OutputMedia[]> {
         return new Promise<OutputMedia[]>(resolve => {
             let outputsCount = 0
-
             const outputs: OutputMedia[] = profile.output.mappings
                 .map(m => getMappingBuilder(m))
                 .map(b => {
@@ -82,7 +81,7 @@ class OutputMediaBuilder {
                     return output
                 })
                 .reduce((a, b) => a.concat(...b), [])
-                .map(o => resolveOutputParameters(o, {profile: profile, input: input}))
+                .map(o => resolveOutputParameters(o, {profile: profile, input: input, output: o}))
 
             resolve(outputs)
         })
@@ -129,25 +128,28 @@ class SingleMappingBuilder extends MappingBuilder {
         const output = new OutputMedia(outputsCount, context.input)
         const localContext = {...context, output: output}
 
-        const options: Option[] = this.buildOptions(output, localContext)
+        const options = this.buildOptions(localContext, output)
 
         let streamsCount = 0
-
-        output.streams = context.input.streams
+        const streams = context.input.streams
             .map(s => {
-                let streams = this.buildStream(s, localContext, options, streamsCount)
+                let streams = this.buildStream(localContext, s, options, streamsCount)
                 streamsCount += streams.length
                 return streams
             })
-            .reduce((arr, streams) => [...arr, ...streams], [])
-
-        output.path = this.buildPath(localContext)
+            .reduce((result, ss) => result.concat(ss), [])
 
         // Ignore this output if it does not contain any stream
-        return streamsCount > 0 ? [output] : []
+        if (streamsCount === 0) {
+            return []
+        }
+
+        output.streams = streams
+        output.path = this.buildPath(localContext)
+        return [output]
     }
 
-    buildOptions(output: OutputMedia, context: SnippetContext) {
+    buildOptions(context: SnippetContext, output: OutputMedia) {
         const options: Option[] = []
 
         // Resolve global parameters
@@ -170,30 +172,30 @@ class SingleMappingBuilder extends MappingBuilder {
         return options
     }
 
-    buildStream(stream: InputStream, context: SnippetContext, options: Option[], streamsCount: number): OutputStream[] {
+    buildStream(context: SnippetContext, stream: InputStream, options: Option[], streamsCount: number): OutputStream[] {
         const streams: OutputStream[] = []
         const streamParams: string[] = []
 
-        const localOptions: Option[] = options
+        const relOptions: Option[] = options
             .filter(o => o.on === 'all' || o.on === stream.codec_type || Array.isArray(o.on) && o.on.includes(stream.codec_type))
             .filter(o => parsePredicate(o.when)({...context, stream: stream}))
 
-        if (localOptions.some(o => o.exclude)) {
+        if (relOptions.some(o => o.exclude)) {
             return streams
         }
 
-        if (localOptions && localOptions.length > 0) {
-            localOptions.forEach(o => {
-                let optionParams: string[] = toArray(o.params)
-                if (optionParams.some(p => !!p.match(/-map/))) {
+        if (relOptions && relOptions.length > 0) {
+            relOptions.forEach(o => {
+                let relOptionParams: string[] = toArray(o.params)
+                if (relOptionParams.some(p => !!p.match(/-map/))) {
                     streams.push({
                         index: streamsCount++,
                         source: stream,
-                        params: optionParams
+                        params: relOptionParams
                     })
                 }
                 else {
-                    streamParams.push(...optionParams)
+                    streamParams.push(...relOptionParams)
                 }
             })
         }
