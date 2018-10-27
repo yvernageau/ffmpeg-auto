@@ -4,7 +4,7 @@ import * as path from 'path'
 import {LoggerFactory} from './logger'
 import {Chapter, InputMedia, InputStream, OutputMedia, OutputStream, Path} from './media'
 import {Mapping, Option, Profile} from './profile'
-import {DefaultSnippetResolver, parsePredicate, SnippetContext, SnippetResolver, toArray} from './snippet'
+import {DefaultSnippetResolver, parsePredicate, Snippet, SnippetContext, SnippetResolver, toArray} from './snippet'
 import {WorkerContext} from './worker'
 
 const logger = LoggerFactory.get('mapper')
@@ -21,8 +21,8 @@ export class ProfileMapper {
     async apply(inputFile: string): Promise<WorkerContext> {
         logger.info("Applying profile '%s' on '%s' ...", this.profile.id, inputFile)
 
-        return new InputMediaBuilder()
-            .build(this.profile, inputFile)
+        return new InputMediaBuilder(this.profile)
+            .build(inputFile)
             .then(i => new OutputMediaBuilder()
                 .build(this.profile, i)
                 .then(os => {
@@ -39,32 +39,41 @@ export class ProfileMapper {
 
 class InputMediaBuilder {
 
-    async build(profile: Profile, inputFile: string): Promise<InputMedia> {
+    private readonly profile: Profile
+
+    constructor(profile: Profile) {
+        this.profile = profile
+    }
+
+    async build(file: string): Promise<InputMedia> {
         return new Promise<InputMedia>((resolve, reject) => {
-            if (!fs.existsSync(inputFile)) {
+            if (!fs.existsSync(file)) {
                 reject("'%s' no longer exists")
             }
 
-            ffprobe(inputFile, (err, data) => {
+            ffprobe(file, ['-show_chapters'], (err, metadata) => {
                 if (err) return reject(err.message)
 
-                const filepath = path.parse(inputFile)
-                const input = new InputMedia(
-                    0,
-                    {
-                        parent: path.relative(profile.input.directory, filepath.dir),
-                        filename: filepath.name,
-                        extension: filepath.ext.replace(/^\./, '') // Remove the heading dot
-                    },
-                    profile.input ? toArray(profile.input.params) : [],
-                    data
-                )
+                const params: Snippet[] = this.profile.input ? toArray(this.profile.input.params) : []
+                const path: Path = this.resolvePath(file)
 
-                resolveInputParameters(input, {profile: profile, input: input})
+                const input = new InputMedia(0, path, params, metadata)
+
+                resolveInputParameters(input, {profile: this.profile, input: input})
 
                 resolve(input)
             })
         })
+    }
+
+    private resolvePath(file: string) {
+        const filepath = path.parse(file)
+
+        return {
+            parent: path.relative(this.profile.input.directory, filepath.dir),
+            filename: filepath.name,
+            extension: filepath.ext.replace(/^\./, '') // Remove the heading dot
+        }
     }
 }
 
@@ -75,10 +84,10 @@ class InputMediaBuilder {
 class OutputMediaBuilder {
 
     async build(profile: Profile, input: InputMedia): Promise<OutputMedia[]> {
-        return new Promise<OutputMedia[]>(resolve => {
+        return new Promise<OutputMedia[]>((resolve, reject) => {
             let outputsCount = 0
             const outputs: OutputMedia[] = profile.output.mappings
-                .map(m => getMappingBuilder(m))
+                .map(m => createBuilder(m))
                 .map(b => {
                     let output = b.build({profile: profile, input: input}, outputsCount)
                     outputsCount += output.length
@@ -87,12 +96,18 @@ class OutputMediaBuilder {
                 .reduce((a, b) => a.concat(...b), [])
                 .map(o => resolveOutputParameters(o, {profile: profile, input: input, output: o}))
 
+            if (outputs.length === 0) {
+                return reject('No output: skip')
+            }
+
+            // TODO Simplify params
+
             resolve(outputs)
         })
     }
 }
 
-function getMappingBuilder(mapping: Mapping) {
+function createBuilder(mapping: Mapping): MappingBuilder {
     if (!mapping.on || mapping.on === 'none') { // [default|none]
         return new SingleMappingBuilder(mapping)
     }
@@ -125,64 +140,84 @@ class SingleMappingBuilder extends MappingBuilder {
         logger.info('> %s:%s ...', context.profile.id, this.mapping.id)
 
         if (this.mapping.when && !parsePredicate(this.mapping.when)(context)) {
-            logger.warn(">> 'when' directive does not match the current context")
+            logger.info(">> 'when' directive does not match the current context")
             return []
         }
 
         const output = new OutputMedia(currentId, context.input)
-        const localContext = {...context, output: output}
+        const outputContext = {...context, output: output}
 
-        const options = this.buildOptions(localContext, output)
+        output.params = this.getGlobalParameters(outputContext)
 
-        let streamsCount = 0
-        const streams = context.input.streams
-            .map(s => {
-                let streams = this.buildStream(localContext, s, options, streamsCount)
-                streamsCount += streams.length
-                return streams
-            })
-            .reduce((a, b) => a.concat(...b), [])
+        const streams: OutputStream[] = this.createStreams(context)
 
-        // Ignore this output if it does not contain any stream
-        if (streamsCount === 0) {
-            return []
+        if (streams.length === 0) {
+            return [] // Ignore this output if it does not contain any stream
         }
 
         output.streams = streams
-        output.path = this.buildPath(localContext)
+        output.path = this.resolvePath(outputContext)
 
         return [output]
     }
 
-    private buildOptions(context: SnippetContext, output: OutputMedia) {
-        const options: Option[] = []
+    private createStreams(context: SnippetContext): OutputStream[] {
+        const tasks = this.getTasks()
 
-        // Resolve global parameters
+        let streamsCount = 0
+        return context.input.streams
+            .map(s => {
+                let streams = new OutputStreamBuilder().build(context, s, tasks, streamsCount)
+                streamsCount += streams.length
+                return streams
+            })
+            .reduce((a, b) => a.concat(...b), [])
+    }
+
+    private getGlobalParameters(context: SnippetContext): string[] {
+        const parameters: string[] = []
+
         if (this.mapping.params) {
-            output.params.push(...this.mapping.params)
+            parameters.push(...toArray(this.mapping.params))
         }
 
         if (this.mapping.options && this.mapping.options.length > 0) {
-            // Resolve other global parameters
-            output.params.push(...this.mapping.options
+            parameters.push(...this.mapping.options
                 .filter(o => !o.on || o.on === 'none')
                 .filter(o => parsePredicate(o.when)(context))
                 .map(o => toArray(o.params))
-                .reduce((a, b) => a.concat(...b), []))
-
-            // Resolve task parameters
-            options.push(...this.mapping.options.filter(o => o.on && o.on !== 'none'))
+                .reduce((a, b) => a.concat(...b), [])
+            )
         }
 
-        return options
+        return parameters
     }
 
-    private buildStream(context: SnippetContext, stream: InputStream, options: Option[], currentId: number): OutputStream[] {
+    private getTasks(): Option[] {
+        const tasks: Option[] = []
+        if (this.mapping.options && this.mapping.options.length > 0) {
+            tasks.push(...this.mapping.options.filter(o => o.on && o.on !== 'none'))
+        }
+        return tasks
+    }
+
+    private resolvePath(context: SnippetContext): Path {
+        return {
+            parent: context.input.path.parent,
+            filename: new DefaultSnippetResolver().resolve(this.mapping.output, context),
+            extension: this.mapping.format ? this.mapping.format : context.profile.output.defaultExtension
+        }
+    }
+}
+
+class OutputStreamBuilder {
+
+    build(context: SnippetContext, stream: InputStream, tasks: Option[], currentId: number): OutputStream[] {
         const streams: OutputStream[] = []
         const streamParams: string[] = []
 
         // Retrieve options related to this stream
-        const relOptions: Option[] = options
+        const relOptions: Option[] = tasks
             .filter(o => o.on === 'all' || o.on === stream.codec_type || Array.isArray(o.on) && o.on.includes(stream.codec_type))
             .filter(o => parsePredicate(o.when)({...context, stream: stream}))
 
@@ -218,14 +253,6 @@ class SingleMappingBuilder extends MappingBuilder {
 
         return streams
     }
-
-    private buildPath(context: SnippetContext): Path {
-        return {
-            parent: context.input.path.parent,
-            filename: new DefaultSnippetResolver().resolve(this.mapping.output, context),
-            extension: this.mapping.format ? this.mapping.format : context.profile.output.defaultExtension
-        }
-    }
 }
 
 class ChapterMappingBuilder extends MappingBuilder {
@@ -234,12 +261,15 @@ class ChapterMappingBuilder extends MappingBuilder {
         super(mapping)
     }
 
-    // FIXME The (existing) last chapter is not added to the 'default' mapping
     build(context: SnippetContext, currentId: number): OutputMedia[] {
         logger.info('> %s:%s ...', context.profile.id, this.mapping.id)
 
         let chaptersCount: number = 1
-        return this.getChapters(context)
+        const chapters = this.getChapters(context)
+
+        logger.info(JSON.stringify(chapters))
+
+        return chapters
             .map(ch => {
                 return {...context, chapter: {...ch, number: chaptersCount++}}
             })
@@ -269,17 +299,23 @@ class ChapterMappingBuilder extends MappingBuilder {
         // Add a dummy chapter from the end of the last chapter to the end of the source (if necessary)
         if (lastChapter.end_time !== duration) {
             const timeBaseFractionParts = (<string>lastChapter.time_base).split('/').map(i => parseInt(i))
-            let timeBaseFraction = timeBaseFractionParts[0] / timeBaseFractionParts[1]
+            const timeBaseFraction = timeBaseFractionParts[0] / timeBaseFractionParts[1]
+
+            const end = duration / timeBaseFraction
+
+            logger.debug("Add a chapter from '%s' to '%s'", lastChapter.end, end)
 
             chapters.push({
                 id: 0,
                 time_base: lastChapter.time_base,
                 start: lastChapter.end,
                 start_time: lastChapter.end_time,
-                end: context.input.format.duration / timeBaseFraction,
+                end: end,
                 end_time: duration
             })
         }
+
+        return chapters
     }
 }
 
@@ -307,8 +343,8 @@ class ManyMappingBuilder extends MappingBuilder {
             .filter(o => o)
     }
 
-    private buildOutput(context: SnippetContext, stream: InputStream, outputsCount: number): OutputMedia {
-        const output = new OutputMedia(outputsCount + 1, context.input)
+    private buildOutput(context: SnippetContext, stream: InputStream, currentId: number): OutputMedia {
+        const output = new OutputMedia(currentId, context.input)
 
         output.streams.push({
             index: 0,
@@ -316,12 +352,12 @@ class ManyMappingBuilder extends MappingBuilder {
             params: ['-map {iid}', ...toArray(this.mapping.params)]
         })
 
-        output.path = this.buildPath({...context, output: output, stream: stream})
+        output.path = this.resolvePath({...context, output: output, stream: stream})
 
         return output
     }
 
-    private buildPath(context: SnippetContext): Path {
+    private resolvePath(context: SnippetContext): Path {
         return {
             parent: context.input.path.parent,
             filename: new DefaultSnippetResolver().resolve(this.mapping.output, context),
