@@ -1,6 +1,5 @@
 import {LoggerFactory} from './logger'
 import {Chapter, InputMedia, InputStream, OutputMedia, OutputStream} from './media'
-import {Profile} from './profile'
 
 const logger = LoggerFactory.get('snippet')
 
@@ -15,7 +14,6 @@ const snippetRegex: RegExp = /{((?:(?![{}]).)*)}/gi
 const functionSnippetRegex: RegExp = /{{((?:(?!{{).)*)}}/gi
 
 export class SnippetContext {
-    profile: Profile
     input: InputMedia
     output?: OutputMedia
     stream?: InputStream
