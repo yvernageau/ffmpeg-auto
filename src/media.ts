@@ -56,7 +56,7 @@ export type Stream = {
     index: number
 }
 
-export type CodecType = 'video' | 'audio' | 'subtitle' | 'data'
+export type CodecType = 'video' | 'audio' | 'subtitle' | 'attachment' | 'data'
 
 export type InputStream = Stream & {
     readonly [key: string]: any
