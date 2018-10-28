@@ -2,8 +2,8 @@ import {ffprobe} from 'fluent-ffmpeg'
 import * as fs from 'fs-extra'
 import * as path from 'path'
 import {LoggerFactory} from './logger'
-import {Chapter, InputMedia, InputStream, OutputMedia, OutputStream, Path} from './media'
-import {InputConfig, Mapping, Option, OutputConfig, Profile} from './profile'
+import {Chapter, CodecType, InputMedia, InputStream, OutputMedia, OutputStream, Path} from './media'
+import {InputConfig, Mapping, MappingOption, OutputConfig, Profile} from './profile'
 import {DefaultSnippetResolver, parsePredicate, SnippetContext, SnippetResolver, toArray} from './snippet'
 import {WorkerContext} from './worker'
 
@@ -105,8 +105,14 @@ class OutputMediaBuilder {
                 return reject('No output: skip')
             }
 
-            // TODO Simplify params
-            outputs.map(o => resolveOutputParameters(o, {input: media, output: o}))
+            // TODO Simplify params (don't '-map' everything)
+            outputs.forEach(o => {
+                // Add '-map' parameter
+                o.streams.forEach(os => os.params.unshift('-map {iid}'))
+
+                // Resolve parameters
+                resolveOutputParameters(o, {input: media, output: o})
+            })
 
             resolve(outputs)
         })
@@ -157,7 +163,7 @@ class SingleMappingBuilder extends MappingBuilder {
 
         output.params = this.getGlobalParameters(outputContext)
 
-        const streams: OutputStream[] = this.createStreams(context)
+        const streams: OutputStream[] = this.createStreams(outputContext)
 
         if (streams.length === 0) {
             return [] // Ignore this output if it does not contain any stream
@@ -170,7 +176,7 @@ class SingleMappingBuilder extends MappingBuilder {
     }
 
     private createStreams(context: SnippetContext): OutputStream[] {
-        const tasks = this.getTasks()
+        const tasks = this.getMappingOptions()
 
         let id = 0
         return context.input.streams
@@ -201,12 +207,12 @@ class SingleMappingBuilder extends MappingBuilder {
         return parameters
     }
 
-    private getTasks(): Option[] {
-        const tasks: Option[] = []
+    private getMappingOptions(): MappingOption[] {
+        const mappingOptions: MappingOption[] = []
         if (this.mapping.options && this.mapping.options.length > 0) {
-            tasks.push(...this.mapping.options.filter(o => o.on && o.on !== 'none'))
+            mappingOptions.push(...this.mapping.options.filter(o => o.on && o.on !== 'none'))
         }
-        return tasks
+        return mappingOptions
     }
 
     private resolvePath(context: SnippetContext): Path {
@@ -220,43 +226,54 @@ class SingleMappingBuilder extends MappingBuilder {
 
 class OutputStreamBuilder {
 
-    build(context: SnippetContext, stream: InputStream, tasks: Option[], nextId: number): OutputStream[] {
+    private static isExcluded(context: SnippetContext, stream: InputStream): boolean {
+        const outputParams = context.output.params
+        if (!outputParams) {
+            return false
+        }
+
+        return disabledCodecsByOption
+            .filter(co => outputParams.includes(`-${co.key}`))
+            .some(co => co.value === stream.codec_type)
+    }
+
+    build(context: SnippetContext, stream: InputStream, options: MappingOption[], nextId: number): OutputStream[] {
         const streams: OutputStream[] = []
         const streamParams: string[] = []
 
-        // Retrieve options related to this stream
-        const relOptions: Option[] = tasks
-            .filter(o => o.on === 'all' || o.on === stream.codec_type || Array.isArray(o.on) && o.on.includes(stream.codec_type))
-            .filter(o => parsePredicate(o.when)({...context, stream: stream}))
-
-        if (relOptions.some(o => o.exclude)) {
+        if (OutputStreamBuilder.isExcluded(context, stream)) {
             return streams
         }
 
-        if (relOptions && relOptions.length > 0) {
-            relOptions.forEach(o => {
-                let relOptionParams: string[] = toArray(o.params)
-                if (relOptionParams.some(p => !!p.match(/-map/))) { // TODO Use a better way to duplicate a stream
+        // Retrieve options related to this stream
+        const relMappingOptions: MappingOption[] = options
+            .filter(o => o.on === 'all' || o.on === stream.codec_type || Array.isArray(o.on) && o.on.includes(stream.codec_type))
+            .filter(o => parsePredicate(o.when)({...context, stream: stream}))
+
+        if (relMappingOptions.some(o => o.exclude)) {
+            return streams
+        }
+
+        if (relMappingOptions && relMappingOptions.length > 0) {
+            relMappingOptions.forEach(o => {
+                let relMappingOptionParams: string[] = toArray(o.params)
+                if (o.duplicate) {
                     streams.push({
                         index: nextId++,
                         source: stream,
-                        params: relOptionParams
+                        params: relMappingOptionParams
                     })
                 }
                 else {
-                    streamParams.push(...relOptionParams)
+                    streamParams.push(...relMappingOptionParams)
                 }
             })
-        }
-        else {
-            // Copy the input stream by default
-            streamParams.push('-c:{oid} copy')
         }
 
         streams.push({
             index: nextId++,
             source: stream,
-            params: ['-map {iid}', ...streamParams]
+            params: streamParams
         })
 
         return streams
@@ -355,7 +372,7 @@ class ManyMappingBuilder extends MappingBuilder {
         output.streams.push({
             index: 0,
             source: stream,
-            params: ['-map {iid}', ...toArray(this.mapping.params)]
+            params: toArray(this.mapping.params)
         })
 
         output.path = this.resolvePath({...context, output: output, stream: stream})
@@ -408,17 +425,17 @@ function resolveOutputParameters(o: OutputMedia, context: SnippetContext): Outpu
 }
 
 function resolveExtension(codecName: string): string {
-    const possibleExtensions: CodecExtension[] = extensionsByCodec.filter(ec => codecName.match(ec.codecName))
+    const extensions: KeyValue<RegExp, string>[] = extensionsByCodecName.filter(ec => codecName.match(ec.key))
     let extension: string
 
-    if (possibleExtensions && possibleExtensions.length > 0) {
-        if (possibleExtensions.length === 1) {
-            extension = possibleExtensions[0].extension
+    if (extensions && extensions.length > 0) {
+        if (extensions.length === 1) {
+            extension = extensions[0].value
             logger.verbose(">> Using extension '%s' for codec '%s'", extension, codecName)
         }
         else {
-            extension = possibleExtensions[0].extension
-            logger.warn(">> Several occurences match the codec '%s': [%s], using '%s'", codecName, possibleExtensions.map(ec => ec.codecName + '=' + ec.extension), extension)
+            extension = extensions[0].value
+            logger.warn(">> Several occurences match the codec '%s': [%s], using '%s'", codecName, extensions.map(ec => `${ec.key}=${ec.value}`), extension)
         }
     }
     else {
@@ -429,14 +446,24 @@ function resolveExtension(codecName: string): string {
     return extension
 }
 
-type CodecExtension = {
-    codecName: RegExp,
-    extension: string
+// endregion
+
+// region Constants
+
+type KeyValue<K, V> = {
+    key: K,
+    value: V
 }
 
-// TODO Complete this list
-const extensionsByCodec: CodecExtension[] = [
-    {codecName: /subrip/, extension: 'srt'}
+const extensionsByCodecName: KeyValue<RegExp, string>[] = [
+    {key: /subrip/, value: 'srt'}
+]
+
+const disabledCodecsByOption: KeyValue<string, CodecType>[] = [
+    {key: 'vn', value: 'video'},
+    {key: 'an', value: 'audio'},
+    {key: 'sn', value: 'subtitle'},
+    {key: 'dn', value: 'data'}
 ]
 
 // endregion
