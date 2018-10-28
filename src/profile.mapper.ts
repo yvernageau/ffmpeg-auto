@@ -4,7 +4,7 @@ import * as path from 'path'
 import {LoggerFactory} from './logger'
 import {Chapter, InputMedia, InputStream, OutputMedia, OutputStream, Path} from './media'
 import {Mapping, Option, Profile} from './profile'
-import {DefaultSnippetResolver, parsePredicate, Snippet, SnippetContext, SnippetResolver, toArray} from './snippet'
+import {DefaultSnippetResolver, parsePredicate, SnippetContext, SnippetResolver, toArray} from './snippet'
 import {WorkerContext} from './worker'
 
 const logger = LoggerFactory.get('mapper')
@@ -204,7 +204,7 @@ class SingleMappingBuilder extends MappingBuilder {
     private resolvePath(context: SnippetContext): Path {
         return {
             parent: context.input.path.parent,
-            filename: new DefaultSnippetResolver().resolve(this.mapping.output, context),
+            filename: new DefaultSnippetResolver().resolve(this.mapping.output, context).toString(),
             extension: this.mapping.format ? this.mapping.format : context.profile.output.defaultExtension
         }
     }
@@ -360,7 +360,7 @@ class ManyMappingBuilder extends MappingBuilder {
     private resolvePath(context: SnippetContext): Path {
         return {
             parent: context.input.path.parent,
-            filename: new DefaultSnippetResolver().resolve(this.mapping.output, context),
+            filename: new DefaultSnippetResolver().resolve(this.mapping.output, context).toString(),
             extension: this.mapping.format ? this.mapping.format : resolveExtension(context.stream.codec_name),
         }
     }
@@ -370,15 +370,17 @@ class ManyMappingBuilder extends MappingBuilder {
 
 // region Helper functions
 
+// TODO Remove `toString()`
 function resolveInputParameters(i: InputMedia, context: SnippetContext): InputMedia {
     const resolver: SnippetResolver = new DefaultSnippetResolver()
 
     // Resolve general parameters
-    i.params = i.params.map(p => resolver.resolve(p, context))
+    i.params = i.params.map(p => resolver.resolve(p, context).toString())
 
     return i
 }
 
+// TODO Remove `toString()`
 function resolveOutputParameters(o: OutputMedia, context: SnippetContext): OutputMedia {
     const resolver: SnippetResolver = new DefaultSnippetResolver()
 
@@ -386,17 +388,15 @@ function resolveOutputParameters(o: OutputMedia, context: SnippetContext): Outpu
     o.params = o.params.map(p => resolver.resolve(p, {
         ...context,
         output: o
-    }))
+    }).toString())
 
     // Resolve stream-dependent parameters
-    o.streams.forEach(os => {
-        os.params = os.params.map(p => resolver.resolve(p, {
-            ...context,
-            output: o,
-            stream: os.source,
-            outputStream: os
-        }))
-    })
+    o.streams.forEach(os => os.params = os.params.map(p => resolver.resolve(p, {
+        ...context,
+        output: o,
+        stream: os.source,
+        outputStream: os
+    }).toString()))
 
     return o
 }

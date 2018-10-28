@@ -11,8 +11,8 @@ export function toArray(snippets: Snippets) {
     return snippets ? Array.isArray(snippets) ? snippets : [snippets] : []
 }
 
-const REGEX: RegExp = /{((?:(?![{}]).)*)}/gi
-const REGEX_EXECUTABLE: RegExp = /{{((?:(?!{{).)*)}}/gi
+const snippetRegex: RegExp = /{((?:(?![{}]).)*)}/gi
+const functionSnippetRegex: RegExp = /{{((?:(?!{{).)*)}}/gi
 
 export class SnippetContext {
     profile: Profile
@@ -23,8 +23,19 @@ export class SnippetContext {
     chapter?: Chapter // Only when 'mapping.on == chapters'
 }
 
+export function isResolvable(value: any): boolean {
+    return !!value && (typeof value === 'string' || Array.isArray(value))
+}
+
+function checkResolved(result: string) {
+    const unformatted = result.match(snippetRegex)
+    if (unformatted) {
+        throw new Error('Unknown pattern(s): ' + unformatted.join('; '))
+    }
+}
+
 export interface SnippetResolver {
-    resolve(snippets: Snippets, context: SnippetContext): string
+    resolve(snippets: Snippets, context: SnippetContext): string | number | boolean
 }
 
 export class DefaultSnippetResolver implements SnippetResolver {
@@ -36,21 +47,22 @@ export class DefaultSnippetResolver implements SnippetResolver {
         new FunctionSnippetResolver()
     ]
 
-    static checkComplete(result: string): string {
-        const unformatted = result.match(REGEX)
-        if (unformatted) {
-            throw new Error('Unknown pattern(s): ' + unformatted.join('; '))
-        }
+    resolve(snippets: Snippets, context: SnippetContext): string | number | boolean {
+        const snippet: string = toArray(snippets).join(' ')
+
+        let resolved: string = this.resolvers.reduce((result, resolver) => resolver.resolve(result, context).toString(), snippet)
+        checkResolved(resolved)
+
+        const result = this.cast(resolved)
+        logger.debug("Resolved: '%s' => '%s' as %s", snippet, result, typeof result)
         return result
     }
 
-    resolve(snippets: Snippets, context: SnippetContext): string {
-        const snippet: string = toArray(snippets).join(' ')
-        const result = this.resolvers.reduce((result, resolver) => resolver.resolve(result, context), snippet)
-
-        logger.debug("Resolved: '%s' => '%s'", snippet, result)
-
-        return DefaultSnippetResolver.checkComplete(result)
+    cast(value: string) {
+        if (value.match(/^true|false$/)) return value == 'true'
+        else if (value.match(/^\d+$/)) return parseInt(value)
+        else if (value.match(/^\d+\.\d+$/)) return parseFloat(value)
+        else return value
     }
 }
 
@@ -72,7 +84,7 @@ class FunctionSnippetResolver implements SnippetResolver {
 
     resolve(snippet: string, context: SnippetContext): string {
         // Resolve functions
-        return snippet.replace(REGEX_EXECUTABLE, (match, body: string) => parseFunction<string>(body.trim())(context))
+        return snippet.replace(functionSnippetRegex, (match, body: string) => parseFunction<string>(body.trim())(context))
     }
 }
 
@@ -87,7 +99,7 @@ class ShortcutSnippetResolver implements SnippetResolver {
         if (!!result.match(regexp)) {
             let replacement = shortcut.replacement
 
-            if (!!replacement.match(REGEX_EXECUTABLE)) {
+            if (!!replacement.match(functionSnippetRegex)) {
                 replacement = new FunctionSnippetResolver().resolve(replacement, context)
             }
 
