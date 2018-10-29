@@ -1,18 +1,49 @@
 import * as path from 'path'
-import {Snippet} from './snippet'
+import {DefaultSnippetResolver, Snippet, SnippetContext} from './snippet'
 
-export type Path = {
-    parent: string
-    filename: string
-    extension: string
-}
+export class Path {
+    readonly parent: string
+    readonly filename: string
+    readonly extension: string
 
-export function resolvePath(p: Path, basedir: string) {
-    return path.format({
-        dir: path.resolve(basedir, p.parent),
-        name: p.filename,
-        ext: `.${p.extension}`
-    })
+    private constructor(parent: string, filename: string, extension: string) {
+        this.parent = parent
+        this.filename = filename
+        this.extension = extension
+    }
+
+    static fromFile(basedir: string, file: string): Path {
+        const filepath = path.parse(file)
+        return new Path(
+            path.relative(basedir, filepath.dir),
+            filepath.name,
+            filepath.ext.replace(/^\./, '') // Remove the heading dot
+        )
+    }
+
+    static fromSnippet(snippet: Snippet, context: SnippetContext, extension: string) {
+        return new Path(
+            context.input.path.parent,
+            new DefaultSnippetResolver().resolve(snippet, context).toString(),
+            extension
+        )
+    }
+
+    resolveSibling(suffix: string, extension: string) {
+        return new Path(
+            this.parent,
+            `${this.filename}.${suffix}`,
+            extension
+        )
+    }
+
+    resolve(basedir: string) {
+        return path.format({
+            dir: path.resolve(basedir, this.parent),
+            name: this.filename,
+            ext: `.${this.extension}`
+        })
+    }
 }
 
 export class Media {

@@ -4,7 +4,7 @@ import * as path from 'path'
 import * as winston from 'winston'
 import {format} from 'winston'
 import {LoggerFactory} from './logger'
-import {InputStream, resolvePath} from './media'
+import {InputStream} from './media'
 import {Worker} from './worker'
 
 const logger = LoggerFactory.get('worker')
@@ -61,14 +61,7 @@ export class LoggingWorkerListener extends WorkerListener {
     }
 
     private writeLogFile(level: string, lines: string[]): string {
-        const fileLogPath: string = resolvePath(
-            {
-                parent: this.worker.input.path.parent,
-                filename: `${this.worker.input.path.filename}.${moment().format('YYYYMMDD-HHmmssSSS')}`,
-                extension: 'log'
-            },
-            this.worker.profile.output.directory
-        )
+        const fileLogPath: string = this.worker.input.path.resolveSibling(moment().format('YYYYMMDD-HHmmssSSS'), 'log').resolve(this.worker.profile.output.directory)
 
         const fileLogger = winston.createLogger({
             format: format.simple(),

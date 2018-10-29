@@ -1,6 +1,5 @@
 import {ffprobe} from 'fluent-ffmpeg'
 import * as fs from 'fs-extra'
-import * as path from 'path'
 import {LoggerFactory} from './logger'
 import {Chapter, CodecType, InputMedia, InputStream, OutputMedia, OutputStream, Path} from './media'
 import {InputConfig, Mapping, MappingOption, OutputConfig, Profile} from './profile'
@@ -54,7 +53,7 @@ class InputMediaBuilder {
 
                 const input = new InputMedia(
                     0,
-                    this.resolvePath(file),
+                    Path.fromFile(this.config.directory, file),
                     toArray(this.config.params),
                     metadata
                 )
@@ -64,16 +63,6 @@ class InputMediaBuilder {
                 resolve(input)
             })
         })
-    }
-
-    private resolvePath(file: string) {
-        const filepath = path.parse(file)
-
-        return {
-            parent: path.relative(this.config.directory, filepath.dir),
-            filename: filepath.name,
-            extension: filepath.ext.replace(/^\./, '') // Remove the heading dot
-        }
     }
 }
 
@@ -126,7 +115,7 @@ function createBuilder(config: OutputConfig, mapping: Mapping): MappingBuilder {
     else if (mapping.on && mapping.on === 'chapters') { // chapters
         return new ChapterMappingBuilder(config, mapping)
     }
-    else { // [all|video|audio|subtitle]+
+    else { // [all|video|audio|subtitle|attachment]+
         return new ManyMappingBuilder(config, mapping)
     }
 }
@@ -216,11 +205,8 @@ class SingleMappingBuilder extends MappingBuilder {
     }
 
     private resolvePath(context: SnippetContext): Path {
-        return {
-            parent: context.input.path.parent,
-            filename: new DefaultSnippetResolver().resolve(this.mapping.output, context).toString(),
-            extension: this.mapping.format ? this.mapping.format : this.config.defaultExtension
-        }
+        const extension = this.mapping.format ? this.mapping.format : this.config.defaultExtension
+        return Path.fromSnippet(this.mapping.output, context, extension)
     }
 }
 
@@ -381,11 +367,8 @@ class ManyMappingBuilder extends MappingBuilder {
     }
 
     private resolvePath(context: SnippetContext): Path {
-        return {
-            parent: context.input.path.parent,
-            filename: new DefaultSnippetResolver().resolve(this.mapping.output, context).toString(),
-            extension: this.mapping.format ? this.mapping.format : resolveExtension(context.stream.codec_name),
-        }
+        const extension = this.mapping.format ? this.mapping.format : resolveExtension(context.stream.codec_name)
+        return Path.fromSnippet(this.mapping.output, context, extension)
     }
 }
 
