@@ -131,6 +131,45 @@ abstract class MappingBuilder {
     }
 
     abstract build(context: SnippetContext, nextId: number): OutputMedia[]
+
+    protected resolvePath(context: SnippetContext): Path {
+        return Path.fromSnippet(this.mapping.output, context, this.resolvePathExtension(context))
+    }
+
+    private resolvePathExtension(context: SnippetContext): string {
+        let extension: string
+
+        if (this.mapping.format) {
+            extension = this.mapping.format
+            logger.verbose(">> 'mapping.format' is defined, using '%s'", extension)
+        }
+        else if (context.output.streams.length === 1 && context.stream) {
+            const codecName: string = context.stream.codec_name
+            const extensions: KeyValue<RegExp, string>[] = extensionsByCodecName.filter(ec => codecName.match(ec.key))
+
+            let extension: string
+            if (extensions && extensions.length > 0) {
+                if (extensions.length === 1) {
+                    extension = extensions[0].value
+                    logger.verbose(">> Using extension '%s' for codec '%s'", extension, codecName)
+                }
+                else {
+                    extension = extensions[0].value
+                    logger.warn(">> Several occurences match the codec '%s': [%s], using '%s'", codecName, extensions.map(ec => `${ec.key}=${ec.value}`), extension)
+                }
+            }
+            else {
+                extension = codecName
+                logger.debug(">> Unable to find the extension for codec '%s', using '%s'", codecName, extension)
+            }
+        }
+        else {
+            extension = this.config.defaultExtension
+            logger.verbose(">> Using the default extension '%s'", extension)
+        }
+
+        return extension
+    }
 }
 
 class SingleMappingBuilder extends MappingBuilder {
@@ -202,11 +241,6 @@ class SingleMappingBuilder extends MappingBuilder {
             mappingOptions.push(...this.mapping.options.filter(o => o.on && o.on !== 'none'))
         }
         return mappingOptions
-    }
-
-    private resolvePath(context: SnippetContext): Path {
-        const extension = this.mapping.format ? this.mapping.format : this.config.defaultExtension
-        return Path.fromSnippet(this.mapping.output, context, extension)
     }
 }
 
@@ -365,11 +399,6 @@ class ManyMappingBuilder extends MappingBuilder {
 
         return output
     }
-
-    private resolvePath(context: SnippetContext): Path {
-        const extension = this.mapping.format ? this.mapping.format : resolveExtension(context.stream.codec_name)
-        return Path.fromSnippet(this.mapping.output, context, extension)
-    }
 }
 
 // endregion
@@ -405,28 +434,6 @@ function resolveOutputParameters(o: OutputMedia, context: SnippetContext): Outpu
     }).toString()))
 
     return o
-}
-
-function resolveExtension(codecName: string): string {
-    const extensions: KeyValue<RegExp, string>[] = extensionsByCodecName.filter(ec => codecName.match(ec.key))
-    let extension: string
-
-    if (extensions && extensions.length > 0) {
-        if (extensions.length === 1) {
-            extension = extensions[0].value
-            logger.verbose(">> Using extension '%s' for codec '%s'", extension, codecName)
-        }
-        else {
-            extension = extensions[0].value
-            logger.warn(">> Several occurences match the codec '%s': [%s], using '%s'", codecName, extensions.map(ec => `${ec.key}=${ec.value}`), extension)
-        }
-    }
-    else {
-        extension = codecName
-        logger.debug(">> Unable to find the extension for codec '%s', using '%s'", codecName, extension)
-    }
-
-    return extension
 }
 
 // endregion
