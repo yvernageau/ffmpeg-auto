@@ -6,7 +6,7 @@ const logger = LoggerFactory.get('snippet')
 export type Snippet = string
 export type Snippets = Snippet | Snippet[]
 
-export function toArray(snippets: Snippets) {
+export function toArray(snippets: Snippets): Snippet[] {
     return snippets ? Array.isArray(snippets) ? snippets : [snippets] : []
 }
 

@@ -3,7 +3,7 @@ import * as fs from 'fs-extra'
 import {LoggerFactory} from './logger'
 import {Chapter, CodecType, InputMedia, InputStream, OutputMedia, OutputStream, Path} from './media'
 import {InputConfig, Mapping, MappingOption, OutputConfig, Profile} from './profile'
-import {DefaultSnippetResolver, parsePredicate, SnippetContext, SnippetResolver, toArray} from './snippet'
+import {DefaultSnippetResolver, parsePredicate, Snippet, SnippetContext, SnippetResolver, toArray} from './snippet'
 import {WorkerContext} from './worker'
 
 const logger = LoggerFactory.get('mapper')
@@ -177,8 +177,8 @@ class SingleMappingBuilder extends MappingBuilder {
             .reduce((a, b) => a.concat(...b), [])
     }
 
-    private getGlobalParameters(context: SnippetContext): string[] {
-        const parameters: string[] = []
+    private getGlobalParameters(context: SnippetContext): Snippet[] {
+        const parameters: Snippet[] = []
 
         if (this.mapping.params) {
             parameters.push(...toArray(this.mapping.params))
@@ -242,7 +242,7 @@ class OutputStreamBuilder {
 
         if (relMappingOptions && relMappingOptions.length > 0) {
             relMappingOptions.forEach(o => {
-                let relMappingOptionParams: string[] = toArray(o.params)
+                let relMappingOptionParams: Snippet[] = toArray(o.params)
                 if (o.duplicate) {
                     streams.push({
                         index: nextId++,
