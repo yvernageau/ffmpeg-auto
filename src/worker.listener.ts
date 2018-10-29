@@ -139,7 +139,7 @@ export class ProgressWorkerListener extends WorkerListener {
 
     onProgress(progress: any) {
         let percent = Math.floor(progress.percent)
-        if (percent > this.progress && percent % this.progressStep === 0) {
+        if (percent > this.progress && percent % this.progressStep === 0) { // TODO Fast processes may never meet this condition (x % 5 === 0)
 
             const speed = progress.currentFps / this.inputFramerate
 
