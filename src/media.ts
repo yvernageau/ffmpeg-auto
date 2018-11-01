@@ -113,6 +113,8 @@ export type Chapter = {
     readonly [key: string]: any
 
     readonly tags?: Tags
+
+    number?: number
 }
 
 export type Tags = {

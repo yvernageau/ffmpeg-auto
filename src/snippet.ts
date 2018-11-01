@@ -45,22 +45,22 @@ export class DefaultSnippetResolver implements SnippetResolver {
         new FunctionSnippetResolver()
     ]
 
+    static cast(value: string): string | number | boolean {
+        if (value.match(/^true|false$/)) return value == 'true'
+        else if (value.match(/^\d+$/)) return parseInt(value)
+        else if (value.match(/^\d+\.\d+$/)) return parseFloat(value)
+        else return value
+    }
+
     resolve(snippets: Snippets, context: SnippetContext): string | number | boolean {
         const snippet: string = toArray(snippets).join(' ')
 
         let resolved: string = this.resolvers.reduce((result, resolver) => resolver.resolve(result, context).toString(), snippet)
         checkResolved(resolved)
 
-        const result = this.cast(resolved)
-        logger.debug("Resolved: '%s' => '%s' as %s", snippet, result, typeof result)
+        const result = DefaultSnippetResolver.cast(resolved)
+        logger.verbose("Resolved '%s' => '%s' as %s", snippet, result, typeof result)
         return result
-    }
-
-    cast(value: string) {
-        if (value.match(/^true|false$/)) return value == 'true'
-        else if (value.match(/^\d+$/)) return parseInt(value)
-        else if (value.match(/^\d+\.\d+$/)) return parseFloat(value)
-        else return value
     }
 }
 
