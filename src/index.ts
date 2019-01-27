@@ -52,9 +52,9 @@ logger.info('output  = %s', args.output)
 logger.info('watch   = %s', args.watch)
 logger.info('debug   = %s', args.debug)
 
-const profile: Profile = Profile.load(args.profile)
-profile.input.directory = args.input
-profile.output.directory = args.output
+const profile: Profile = Profile.load(args.profile as string)
+profile.input.directory = args.input as string
+profile.output.directory = args.output as string
 
 LoggerFactory.debug = args.debug
 
@@ -81,9 +81,9 @@ const scheduler = new Scheduler(profile, (file, callback) => {
         .catch(reason => callback(reason))
 })
 
-const watcher = new Watcher(profile, args.watch)
+const watcher = new Watcher(profile, args.watch as boolean)
     .on('add', file => scheduler.schedule(file))
     .on('remove', file => scheduler.cancel(file))
 
 // Add the initial directory
-watcher.watch(args.input)
+watcher.watch(args.input as string)
