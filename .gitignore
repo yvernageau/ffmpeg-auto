@@ -1,6 +1,11 @@
+# IntelliJ IDEA
 .idea
 *.iml
 
+# Visual Studio
+.vs
+
+# NodeJS
 lib
 node_modules
 npm-debug.log
