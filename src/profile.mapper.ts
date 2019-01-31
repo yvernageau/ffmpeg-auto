@@ -163,7 +163,7 @@ abstract class MappingBuilder {
             parameters.push(...options.map(o => toArray(o.params)).reduce((a, b) => a.concat(...b), []))
         }
 
-        return parameters
+        return [...parameters]
     }
 
     protected getOptions(context: SnippetContext, stream: InputStream, mapping: Mapping = this.mapping): MappingOption[] {
@@ -244,7 +244,7 @@ class SingleMappingBuilder extends MappingBuilder {
                         return {
                             index: streamId++,
                             source: s,
-                            params: toArray(o.params)
+                            params: [...toArray(o.params)]
                         }
                     })
                     .forEach(os => {
@@ -259,7 +259,7 @@ class SingleMappingBuilder extends MappingBuilder {
                 output.streams.push({
                     index: streamId++,
                     source: s,
-                    params: streamParameters
+                    params: [...streamParameters]
                 })
             })
 
@@ -296,7 +296,7 @@ class ManyMappingBuilder extends MappingBuilder {
                 output.streams.push({
                     index: 0,
                     source: s,
-                    params: globalParameters
+                    params: [...globalParameters]
                 })
 
                 output.path = this.resolvePath(outputContext)

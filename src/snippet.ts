@@ -7,7 +7,7 @@ export type Snippet = string
 export type Snippets = Snippet | Snippet[]
 
 export function toArray(snippets: Snippets): Snippet[] {
-    return snippets ? Array.isArray(snippets) ? snippets : [snippets] : []
+    return snippets ? Array.isArray(snippets) ? [...snippets] : [snippets] : []
 }
 
 const snippetRegex: RegExp = /{((?:(?![{}]).)*)}/gi
