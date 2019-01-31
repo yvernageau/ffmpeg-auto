@@ -111,7 +111,7 @@ export class ProgressWorkerListener extends WorkerListener {
 
     private static padStart(obj: number | string, targetLenght: number, padString: string = '\u0020'): string {
         const s = obj.toString()
-        return padString.repeat(targetLenght - s.length) + s
+        return padString.repeat(Math.max(targetLenght - s.length, 0)) + s
     }
 
     onStart() {
