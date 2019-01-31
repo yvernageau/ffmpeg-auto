@@ -171,7 +171,34 @@ abstract class MappingBuilder {
     }
 
     protected getInputStreams(context: SnippetContext, parameters: Snippet[] = this.getGlobalParameters(context)): InputStream[] {
-        return context.input.streams.filter(s => !MappingBuilder.isDisabled(parameters, s))
+        let streams: InputStream[] = context.input.streams.filter(s => !MappingBuilder.isDisabled(parameters, s))
+
+        if (streams.length > 1 && this.mapping.order) {
+            logger.info('Ordering streams...')
+            const order: CodecType[] = this.mapping.order
+
+            streams = streams.sort((s1, s2) => {
+                const t1 = s1.codec_type
+                const t2 = s2.codec_type
+
+                // same type
+                if (t1 === t2) return 0
+
+                // order unspecified for both types (first == second)
+                if (order.indexOf(t1) < 0 && order.indexOf(t2) < 0) return 0
+
+                // order unspecified only for the 1st type: the stream should be placed after
+                if (order.indexOf(t1) < 0) return 1
+
+                // order unspecified only for the 2nd type: the stream should be placed before
+                if (order.indexOf(t2) < 0) return -1
+
+                // order specified for both types
+                return order.indexOf(t1) - order.indexOf(t2)
+            })
+        }
+
+        return streams
     }
 
     protected resolvePath(context: SnippetContext): Path {

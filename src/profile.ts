@@ -45,6 +45,7 @@ export abstract class Task {
 
 export class Mapping extends Task {
     output: Snippet
+    order?: CodecType[]
     format?: string
     options?: MappingOption[]
 }
