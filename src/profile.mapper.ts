@@ -174,7 +174,6 @@ abstract class MappingBuilder {
         let streams: InputStream[] = context.input.streams.filter(s => !MappingBuilder.isDisabled(parameters, s))
 
         if (streams.length > 1 && this.mapping.order) {
-            logger.info('Ordering streams...')
             const order: CodecType[] = this.mapping.order
 
             streams = streams.sort((s1, s2) => {
