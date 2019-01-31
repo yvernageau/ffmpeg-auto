@@ -7,6 +7,11 @@ import {Watcher} from './watcher'
 import {Worker} from './worker'
 import { ProfileValidator } from './profile.validator';
 
+const logger = LoggerFactory.get('config')
+
+const version = '0.1.0'
+logger.info('Running ffmpeg-auto v%s', version);
+
 // Parse command arguments
 const args = yargs
     .usage('$0 [options]')
@@ -46,7 +51,6 @@ const args = yargs
     })
     .parse()
 
-const logger = LoggerFactory.get('config')
 logger.info('profile = %s', args.profile)
 logger.info('input   = %s', args.input)
 logger.info('output  = %s', args.output)

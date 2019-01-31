@@ -1,6 +1,6 @@
 {
   "name": "ffmpeg-auto",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "author": "Yoann Vernageau",
   "description": "An automatic media processing tool using FFMpeg",
   "repository": "https://github.com/yvernageau/ffmpeg-auto",
