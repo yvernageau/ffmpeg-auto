@@ -95,13 +95,10 @@ class OutputMediaBuilder {
             if (outputs.length === 0) return reject('No output: skip')
 
             // TODO Simplify params (don't '-map' everything)
-            outputs.forEach(o => {
-                // Add '-map' parameter
-                o.streams.forEach(os => os.params.unshift('-map {iid}'))
+            outputs.forEach(o => o.streams.forEach(os => os.params.unshift('-map {iid}')))
 
-                // Resolve parameters
-                resolveOutputParameters(o, {input: media, output: o})
-            })
+            // Resolve parameters
+            outputs.forEach(o => resolveOutputParameters(o, {input: media, output: o}))
 
             resolve(outputs)
         })
