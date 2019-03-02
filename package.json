@@ -13,11 +13,11 @@
     "@types/better-queue": "^3.8.0",
     "@types/chokidar": "^1.7.5",
     "@types/fluent-ffmpeg": "^2.1.9",
-    "@types/fs-extra": "^5.0.4",
+    "@types/fs-extra": "^5.0.5",
     "@types/moment-duration-format": "^2.2.2",
-    "@types/node": "^10.12.20",
-    "@types/yargs": "^12.0.8",
-    "typescript": "^3.2.4"
+    "@types/node": ">=10.x <11.x",
+    "@types/yargs": "^12.0.9",
+    "typescript": "^3.3.3333"
   },
   "dependencies": {
     "better-queue": "^3.8.10",
@@ -27,7 +27,7 @@
     "moment": "^2.24.0",
     "moment-duration-format": "^2.2.2",
     "winston": "^3.2.1",
-    "yargs": "^12.0.5"
+    "yargs": "^13.2.1"
   },
   "directories": {
     "lib": "lib"
