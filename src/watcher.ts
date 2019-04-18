@@ -66,6 +66,7 @@ export class Watcher extends EventEmitter {
             this.updateTimeout()
         }
         this.emit('remove', file)
+        this.unwatch(file)
     }
 
     /**
