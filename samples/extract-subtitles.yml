@@ -1,0 +1,27 @@
+id: extract-subtitles
+
+input:
+  include: "mp4|mkv"
+  deleteAfterProcess: false
+
+output:
+  defaultExtension: "mkv"
+  writeLog: false
+  mappings:
+    - id: extract
+      on: subtitle
+      output: "{fn}.{{stream.index}}{.lng}{.label}"
+      params: "-c:{oid} copy"
+    - id: default
+      output: "{fn}"
+      params: "-sn"
+      order:
+        - video
+        - audio
+      options:
+        - id: copy-video
+          on: video
+          params: "-c:{oid} copy"
+        - id: copy-audio
+          on: audio
+          params: "-c:{oid} copy"
