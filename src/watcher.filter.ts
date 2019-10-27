@@ -16,25 +16,24 @@ export interface AsyncFileFilter {
  */
 export class ExcludeListFilter implements AsyncFileFilter {
 
-    private readonly directory: string
+    private readonly directory: string;
 
     constructor(config: OutputConfig) {
         this.directory = config.directory
     }
 
     async test(file: string): Promise<void> {
-        const excludeListPath = path.resolve(this.directory, 'exclude.list')
+        const excludeListPath = path.resolve(this.directory, 'exclude.list');
 
         return new Promise<void>((resolve, reject) => {
             if (!fs.existsSync(excludeListPath)) {
                 return resolve() // 'exclude.list' does not exist
             }
 
-            let lines = fs.readFileSync(excludeListPath, {encoding: 'utf-8'}).split('\n')
+            let lines = fs.readFileSync(excludeListPath, {encoding: 'utf-8'}).split('\n');
             if (lines.filter(l => l === file).length > 0) {
                 reject(`'${file}' has already been processed`)
-            }
-            else {
+            } else {
                 resolve()
             }
         })
@@ -46,21 +45,20 @@ export class ExcludeListFilter implements AsyncFileFilter {
  */
 export class ExtensionFilter implements AsyncFileFilter {
 
-    private readonly include: RegExp
-    private readonly exclude: RegExp
+    private readonly include: RegExp;
+    private readonly exclude: RegExp;
 
     constructor(config: InputConfig) {
-        this.include = config.include
+        this.include = config.include;
         this.exclude = config.exclude
     }
 
     async test(file: string): Promise<void> {
         return new Promise<void>((resolve, reject) => {
-            const extension = path.parse(file).ext.replace(/^\./, '')
+            const extension = path.parse(file).ext.replace(/^\./, '');
             if (this.include && !!extension.match(`^(?:${this.include})$`) || this.exclude && !extension.match(`^(?:${this.exclude})$`)) {
                 resolve()
-            }
-            else {
+            } else {
                 reject(`'${file}' is excluded (or not included) in the 'profile.input' configuration`)
             }
         })
@@ -76,11 +74,9 @@ export class FFProbeFilter implements AsyncFileFilter {
         return new Promise<void>((resolve, reject) => ffprobe(file, ['-show_chapters'], (err, data) => {
             if (!err && !!data) {
                 resolve()
-            }
-            else if (err) {
+            } else if (err) {
                 reject(err.message)
-            }
-            else {
+            } else {
                 reject(`'${file}' is not supported: ffprobe returns no data`)
             }
         }))

@@ -2,18 +2,18 @@ import * as path from 'path'
 import {DefaultSnippetResolver, Snippet, SnippetContext} from './snippet'
 
 export class Path {
-    readonly parent: string
-    readonly filename: string
-    readonly extension: string
+    readonly parent: string;
+    readonly filename: string;
+    readonly extension: string;
 
     private constructor(parent: string, filename: string, extension: string) {
-        this.parent = parent
-        this.filename = filename
+        this.parent = parent;
+        this.filename = filename;
         this.extension = extension
     }
 
     static fromFile(basedir: string, file: string): Path {
-        const filepath = path.parse(file)
+        const filepath = path.parse(file);
         return new Path(
             path.relative(basedir, filepath.dir),
             filepath.name,
@@ -47,38 +47,38 @@ export class Path {
 }
 
 export class Media {
-    readonly id: number = 0
-    path: Path
-    params: Snippet[]
+    readonly id: number = 0;
+    path: Path;
+    params: Snippet[];
 
     constructor(id: number, path?: Path) {
-        this.id = id
+        this.id = id;
         this.path = path
     }
 }
 
 export class InputMedia extends Media {
-    readonly streams: InputStream[]
-    readonly format: Format
-    readonly chapters?: Chapter[]
+    readonly streams: InputStream[];
+    readonly format: Format;
+    readonly chapters?: Chapter[];
 
     constructor(id: number, path: Path, params: Snippet[] = [], meta: any) {
-        super(id, path)
-        this.params = params
-        this.streams = meta.streams
-        this.format = meta.format
+        super(id, path);
+        this.params = params;
+        this.streams = meta.streams;
+        this.format = meta.format;
         this.chapters = meta.chapters
     }
 }
 
 export class OutputMedia extends Media {
-    readonly source: InputMedia
-    streams: OutputStream[]
+    readonly source: InputMedia;
+    streams: OutputStream[];
 
     constructor(id: number, source: InputMedia, params: Snippet[] = [], streams: OutputStream[] = []) {
-        super(id, undefined)
-        this.source = source
-        this.params = params
+        super(id, undefined);
+        this.source = source;
+        this.params = params;
         this.streams = streams
     }
 }

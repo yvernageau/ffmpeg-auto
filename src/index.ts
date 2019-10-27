@@ -5,11 +5,11 @@ import {ProfileMapper} from './profile.mapper'
 import {Scheduler} from './scheduler'
 import {Watcher} from './watcher'
 import {Worker} from './worker'
-import { ProfileValidator } from './profile.validator';
+import {ProfileValidator} from './profile.validator';
 
-const logger = LoggerFactory.get('config')
+const logger = LoggerFactory.get('config');
 
-const version = '0.1.0'
+const version = '0.1.0';
 logger.info('Running ffmpeg-auto v%s', version);
 
 // Parse command arguments
@@ -49,36 +49,36 @@ const args = yargs
         type: 'boolean',
         default: false
     })
-    .parse()
+    .parse();
 
-logger.info('profile = %s', args.profile)
-logger.info('input   = %s', args.input)
-logger.info('output  = %s', args.output)
-logger.info('watch   = %s', args.watch)
-logger.info('verbose = %s', args.verbose)
+logger.info('profile = %s', args.profile);
+logger.info('input   = %s', args.input);
+logger.info('output  = %s', args.output);
+logger.info('watch   = %s', args.watch);
+logger.info('verbose = %s', args.verbose);
 
 // Build and validate profile
-const profile: Profile = Profile.load(args.profile as string)
-profile.input.directory = args.input as string
-profile.output.directory = args.output as string
+const profile: Profile = Profile.load(args.profile as string);
+profile.input.directory = args.input as string;
+profile.output.directory = args.output as string;
 
-new ProfileValidator(profile).validate()
+new ProfileValidator(profile).validate();
 
-LoggerFactory.debug = args.verbose as boolean
+LoggerFactory.debug = args.verbose as boolean;
 
 // Initialize watcher
-const mapper: ProfileMapper = new ProfileMapper(profile)
+const mapper: ProfileMapper = new ProfileMapper(profile);
 
 const scheduler = new Scheduler(profile, (file, callback) => {
     mapper.apply(file)
         .then(context => new Worker(context).execute())
         .then(() => callback(null))
         .catch(reason => callback(reason))
-})
+});
 
 const watcher = new Watcher(profile, args.watch as boolean)
     .on('add', file => scheduler.schedule(file))
-    .on('remove', file => scheduler.cancel(file))
+    .on('remove', file => scheduler.cancel(file));
 
 // Add the initial directory
-watcher.watch(args.input as string)
+watcher.watch(args.input as string);

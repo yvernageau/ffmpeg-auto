@@ -2,21 +2,21 @@ import * as Queue from 'better-queue'
 import {LoggerFactory} from './logger'
 import {Profile} from './profile'
 
-const logger = LoggerFactory.get('scheduler')
+const logger = LoggerFactory.get('scheduler');
 
 export class Scheduler {
 
-    private readonly profile: Profile
+    private readonly profile: Profile;
 
-    private readonly queue: Queue
+    private readonly queue: Queue;
 
-    private readonly tasks: Map<number, string> = new Map<number, string>()
-    private taskCount: number = 0
+    private readonly tasks: Map<number, string> = new Map<number, string>();
+    private taskCount: number = 0;
 
-    private currentTask: number = 0
+    private currentTask: number = 0;
 
     constructor(profile: Profile, onProcess: Queue.ProcessFunction<any, never>) {
-        this.profile = profile
+        this.profile = profile;
 
         this.queue = new Queue(
             onProcess,
@@ -29,21 +29,21 @@ export class Scheduler {
                 logger.info('#%s - Scheduled: %s', id, arg)
             })
             .on('task_started', id => {
-                logger.info('#%s - Started', id)
+                logger.info('#%s - Started', id);
                 this.currentTask = id
             })
             .on('task_finish', id => {
-                logger.info('#%s - Done', id)
+                logger.info('#%s - Done', id);
                 this.tasks.delete(id)
             })
             .on('task_failed', (id, message) => {
-                logger.error('#%s - Failed: %s', id, message)
+                logger.error('#%s - Failed: %s', id, message);
                 this.tasks.delete(id)
             })
             .on('error', (id, error) => {
-                logger.error('#%s - %s', id, error)
+                logger.error('#%s - %s', id, error);
                 this.tasks.delete(id)
-            })
+            });
 
         process.on('exit', () => this.queue.destroy(() => {
         }))
@@ -54,18 +54,18 @@ export class Scheduler {
     }
 
     cancel(file: string) {
-        const id = this.findId(file)
+        const id = this.findId(file);
         if (id > this.currentTask) {
             this.queue.cancel(id, () => {
-                logger.info('#%s - Cancelled', id)
+                logger.info('#%s - Cancelled', id);
                 this.tasks.delete(id)
             })
         }
     }
 
     private createId(file: string) {
-        const id = ++this.taskCount
-        this.tasks.set(id, file)
+        const id = ++this.taskCount;
+        this.tasks.set(id, file);
         return id
     }
 

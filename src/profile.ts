@@ -5,9 +5,9 @@ import {Snippet, Snippets} from './snippet'
 export class Profile {
     [key: string]: any
 
-    id: string
-    input: InputConfig
-    output: OutputConfig
+    id: string;
+    input: InputConfig;
+    output: OutputConfig;
 
     static load(path: string): Profile {
         return {
@@ -22,36 +22,36 @@ export class IOConfig {
 }
 
 export class InputConfig extends IOConfig {
-    include?: RegExp
-    exclude?: RegExp
-    params?: Snippets
+    include?: RegExp;
+    exclude?: RegExp;
+    params?: Snippets;
     deleteAfterProcess?: boolean
 }
 
 // TODO Support for filters (filter_complex)
 export class OutputConfig extends IOConfig {
-    defaultExtension?: string
-    writeLog?: boolean
+    defaultExtension?: string;
+    writeLog?: boolean;
     mappings: Mapping[]
 }
 
 export abstract class Task {
-    id?: string
-    skip?: boolean
-    on?: StreamSelector
-    when?: Snippets
+    id?: string;
+    skip?: boolean;
+    on?: StreamSelector;
+    when?: Snippets;
     params?: Snippets
 }
 
 export class Mapping extends Task {
-    output: Snippet
-    order?: CodecType[]
-    format?: string
+    output: Snippet;
+    order?: CodecType[];
+    format?: string;
     options?: MappingOption[]
 }
 
 export class MappingOption extends Task {
-    duplicate: boolean
+    duplicate: boolean;
     exclude: boolean
 }
 

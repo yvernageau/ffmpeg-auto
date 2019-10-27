@@ -3,7 +3,7 @@ import {format, Logger, LoggerOptions, transports} from 'winston'
 
 export class LoggerFactory {
 
-    static _debug: boolean = false
+    static _debug: boolean = false;
 
     static get debug() {
         return LoggerFactory._debug
@@ -11,7 +11,7 @@ export class LoggerFactory {
 
     static set debug(debug: boolean) {
         if (debug !== LoggerFactory._debug) {
-            LoggerFactory._debug = debug
+            LoggerFactory._debug = debug;
             winston.loggers.loggers.forEach(value => {
                 value.level = debug ? 'debug' : 'info'
             })
@@ -21,8 +21,7 @@ export class LoggerFactory {
     static get(label: string): Logger {
         if (winston.loggers.has(label)) {
             return winston.loggers.get(label)
-        }
-        else {
+        } else {
             return winston.loggers.add(label, LoggerFactory.getOptions(label))
         }
     }

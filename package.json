@@ -10,24 +10,24 @@
     "build": "tsc"
   },
   "devDependencies": {
-    "@types/better-queue": "^3.8.0",
+    "@types/better-queue": "^3.8.1",
     "@types/chokidar": "^1.7.5",
-    "@types/fluent-ffmpeg": "^2.1.9",
-    "@types/fs-extra": "^5.0.5",
+    "@types/fluent-ffmpeg": "^2.1.11",
+    "@types/fs-extra": "^5.1.0",
     "@types/moment-duration-format": "^2.2.2",
-    "@types/node": ">=10.x <11.x",
-    "@types/yargs": "^12.0.12",
-    "typescript": "^3.4.3"
+    "@types/node": "^10.17.0",
+    "@types/yargs": "^12.0.13",
+    "typescript": "^3.6.4"
   },
   "dependencies": {
     "better-queue": "^3.8.10",
-    "chokidar": "^2.1.5",
+    "chokidar": "^2.1.8",
     "fluent-ffmpeg": "^2.1.2",
     "fs-extra": "^7.0.1",
     "moment": "^2.24.0",
-    "moment-duration-format": "^2.2.2",
+    "moment-duration-format": "^2.3.2",
     "winston": "^3.2.1",
-    "yargs": "^13.2.2"
+    "yargs": "^13.3.0"
   },
   "directories": {
     "lib": "lib"

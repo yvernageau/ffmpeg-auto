@@ -9,7 +9,7 @@ import {InputMedia, OutputMedia} from './media'
 import {Profile} from './profile'
 import {LoggingWorkerListener, ProgressWorkerListener} from './worker.listener'
 
-const logger = LoggerFactory.get('worker')
+const logger = LoggerFactory.get('worker');
 
 export type WorkerContext = {
     profile: Profile
@@ -21,31 +21,31 @@ type WorkerDirection = 'in' | 'out'
 
 export class Worker extends EventEmitter {
 
-    readonly profile: Profile
-    readonly input: InputMedia
-    readonly outputs: OutputMedia[]
+    readonly profile: Profile;
+    readonly input: InputMedia;
+    readonly outputs: OutputMedia[];
 
-    private locked: boolean
+    private locked: boolean;
 
     constructor(context: WorkerContext) {
-        super()
+        super();
 
-        this.profile = context.profile
-        this.input = context.input
-        this.outputs = context.outputs
+        this.profile = context.profile;
+        this.input = context.input;
+        this.outputs = context.outputs;
 
         this.on('end', () => {
-            new SetOwnerTask(this).execute()
-            new UpdateExcludeListTask(this).execute()
+            new SetOwnerTask(this).execute();
+            new UpdateExcludeListTask(this).execute();
             new CleanInputTask(this).execute()
-        })
+        });
 
         this.on('error', () => {
             new CleanOutputTask(this).execute()
-        })
+        });
 
         // Register the default listeners
-        new LoggingWorkerListener(this)
+        new LoggingWorkerListener(this);
         new ProgressWorkerListener(this)
     }
 
@@ -53,12 +53,12 @@ export class Worker extends EventEmitter {
         if (this.locked) {
             return Promise.reject('This task has already been executed')
         }
-        this.locked = true
+        this.locked = true;
 
         return new Promise((resolve, reject) => {
-            let command = this.outputs.reduce((c, o) => this.appendOutput(o, c), this.appendInput(this.input, ffmpeg()))
+            let command = this.outputs.reduce((c, o) => this.appendOutput(o, c), this.appendInput(this.input, ffmpeg()));
 
-            this.addListeners(command)
+            this.addListeners(command);
 
             command
                 .on('end', () => resolve())
@@ -107,14 +107,14 @@ export class Worker extends EventEmitter {
 }
 
 function appendArgs(command: FfmpegCommand, direction: WorkerDirection, file: string, options: string[], setFile: (c: FfmpegCommand, f: string) => void, setOptions: (c: FfmpegCommand, os: string[]) => void): FfmpegCommand {
-    logger.debug('%s = %s', direction, file)
-    logger.debug('%s.options = %s', direction, options.join(' '))
+    logger.debug('%s = %s', direction, file);
+    logger.debug('%s.options = %s', direction, options.join(' '));
 
     if (direction === 'out') {
         fs.mkdirpSync(path.dirname(file))
     }
 
-    setFile(command, file)
+    setFile(command, file);
 
     if (options && options.length > 0) {
         setOptions(command, options.map(a => a.trim().split(/\s+/)).reduce((a, b) => a.concat(...b), []))
@@ -125,7 +125,7 @@ function appendArgs(command: FfmpegCommand, direction: WorkerDirection, file: st
 
 abstract class WorkerTask {
 
-    protected readonly worker: Worker
+    protected readonly worker: Worker;
 
     protected constructor(worker: Worker) {
         this.worker = worker
@@ -142,8 +142,8 @@ class SetOwnerTask extends WorkerTask {
 
     execute() {
         if (process.env.UID && process.env.GID) {
-            const uid = parseInt(process.env.UID)
-            const gid = parseInt(process.env.GID)
+            const uid = parseInt(process.env.UID);
+            const gid = parseInt(process.env.GID);
 
             this.worker.outputs
                 .map(o => o.path.resolve(this.worker.profile.output.directory))
@@ -152,12 +152,12 @@ class SetOwnerTask extends WorkerTask {
     }
 
     private async setOwner(file: string, uid: number, gid: number) {
-        const parentDirectory = this.worker.profile.output.directory.replace(`${path.sep}$`, '') // Remove the tailing separator
+        const parentDirectory = this.worker.profile.output.directory.replace(`${path.sep}$`, ''); // Remove the tailing separator
 
         // Define the owner of the file, then its parent directories until the base directory
-        let currentPath = file
+        let currentPath = file;
         while (currentPath !== parentDirectory) {
-            const stat = fs.statSync(currentPath)
+            const stat = fs.statSync(currentPath);
             if (stat.uid !== uid || stat.gid !== gid) { // Ensure the owner is not already defined
                 fs.chown(currentPath, uid, gid)
                     .then(() => logger.debug("Owner (%d:%d) defined for '%s'", uid, gid, currentPath))
@@ -175,8 +175,8 @@ class UpdateExcludeListTask extends WorkerTask {
     }
 
     execute() {
-        const excludeList = path.resolve(this.worker.profile.output.directory, 'exclude.list')
-        const file = this.worker.input.path.resolve(this.worker.profile.input.directory)
+        const excludeList = path.resolve(this.worker.profile.output.directory, 'exclude.list');
+        const file = this.worker.input.path.resolve(this.worker.profile.input.directory);
 
         fs.appendFile(excludeList, file + '\n')
             .then(() => logger.debug("'%s' registered in 'exclude.list'", file))
@@ -192,7 +192,7 @@ class CleanInputTask extends WorkerTask {
 
     execute() {
         if (this.worker.profile.input.deleteAfterProcess) {
-            const file = this.worker.input.path.resolve(this.worker.profile.input.directory)
+            const file = this.worker.input.path.resolve(this.worker.profile.input.directory);
 
             fs.unlink(file)
                 .then(() => logger.info("'%s' deleted (deleteAfterProcess=%s)", file, true))
