@@ -1,6 +1,7 @@
 import * as fs from 'fs-extra'
 import {CodecType} from './media'
 import {Snippet, Snippets} from './snippet'
+import * as jsyaml from 'js-yaml';
 
 export class Profile {
     [key: string]: any
@@ -12,7 +13,7 @@ export class Profile {
     static load(path: string): Profile {
         return {
             ...new Profile(),
-            ...JSON.parse(fs.readFileSync(path, 'utf-8'))
+            ...jsyaml.safeLoad(fs.readFileSync(path, 'utf-8'))
         }
     }
 }
