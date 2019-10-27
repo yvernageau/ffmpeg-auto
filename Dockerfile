@@ -9,4 +9,4 @@ RUN apk add --no-cache ffmpeg && \
     npm install && \
     npm run build
 
-ENTRYPOINT ["node", "lib", "-i", "/input", "-o", "/output", "-p", "/profile.json", "--watch"]
+ENTRYPOINT ["node", "lib", "-i", "/input", "-o", "/output", "-p", "/profile.yml", "--watch"]
