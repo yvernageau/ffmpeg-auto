@@ -112,7 +112,7 @@ export class Watcher extends EventEmitter {
         for (let file of this.pendingFiles.sort()) {
             await this.filter(file)
                 .then(() => this.emit('add', file))
-                .catch(reason => logger.error("x '%s': %s", file, reason))
+                .catch(reason => logger.debug("x '%s': %s", file, reason))
         }
 
         this.reset()
