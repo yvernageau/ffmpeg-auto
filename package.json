@@ -10,15 +10,15 @@
     "build": "tsc"
   },
   "devDependencies": {
-    "@types/better-queue": "^3.8.1",
+    "@types/better-queue": "^3.8.2",
     "@types/chokidar": "^1.7.5",
-    "@types/fluent-ffmpeg": "^2.1.11",
+    "@types/fluent-ffmpeg": "^2.1.14",
     "@types/fs-extra": "^5.1.0",
-    "@types/js-yaml": "^3.12.1",
+    "@types/js-yaml": "^3.12.3",
     "@types/moment-duration-format": "^2.2.2",
-    "@types/node": "^10.17.0",
-    "@types/yargs": "^12.0.13",
-    "typescript": "^3.6.4"
+    "@types/node": "^10.17.21",
+    "@types/yargs": "^12.0.16",
+    "typescript": "^3.8.3"
   },
   "dependencies": {
     "better-queue": "^3.8.10",
@@ -29,7 +29,7 @@
     "moment": "^2.24.0",
     "moment-duration-format": "^2.3.2",
     "winston": "^3.2.1",
-    "yargs": "^13.3.0"
+    "yargs": "^13.3.2"
   },
   "directories": {
     "lib": "lib"
