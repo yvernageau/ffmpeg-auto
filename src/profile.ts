@@ -13,7 +13,7 @@ export class Profile {
     static load(path: string): Profile {
         return {
             ...new Profile(),
-            ...jsyaml.safeLoad(fs.readFileSync(path, 'utf-8'))
+            ...jsyaml.safeLoad(fs.readFileSync(path, 'utf-8')) as Profile
         }
     }
 }
